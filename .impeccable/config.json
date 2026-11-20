@@ -1,0 +1,26 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "repeating-stripes-gradient",
+        "value": "*",
+        "files": [
+          "deploy/index.html"
+        ],
+        "createdAt": "2026-11-20T10:52:06.767Z",
+        "reason": "Claude: hatching marks not-enrolled grid cells, a semantic chart convention, not surface decoration"
+      },
+      {
+        "rule": "cramped-padding",
+        "value": "*",
+        "files": [
+          "deploy/index.html"
+        ],
+        "createdAt": "2026-11-20T10:52:06.836Z",
+        "reason": "Claude: .ct-band padding comes from a custom property (--edge); computed inset is 96px at 1440 and 16px at 375"
+      }
+    ]
+  }
+}

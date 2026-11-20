@@ -18,8 +18,8 @@
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,600&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/landing.css">
+    <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,600&family=Source+Sans+3:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/landing.css?v=4">
 
     <script type="application/ld+json">
     {
@@ -58,6 +58,110 @@
 
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      // Palette: cool neutral greys (ink), petrol for the intervention arm and
+      // for actions (arm / accent), vermilion and gold for the second and
+      // third comparison designs (dark / mid / light, so they survive greyscale). Keep in step with site.css and landing.css.
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              paper: "#f2f3f5",
+              // Cool, nearly colourless neutrals with near-black ink
+              ink: {
+                50: "#f7f8f9", 100: "#eef0f2", 200: "#dfe2e6", 300: "#c4c9cf",
+                400: "#868d96", 500: "#636a73", 600: "#4b5159", 700: "#353a41",
+                800: "#22262b", 900: "#14171a",
+              },
+              // Petrol: the intervention arm and the brand, one hue family.
+              arm: {
+                50: "#ecf6f7", 100: "#d3ecee", 200: "#a6d8dc", 300: "#6dbcc3",
+                400: "#36a0aa", 500: "#117f8a", 600: "#0d6d78", 700: "#0b5862",
+                800: "#0b4850", 900: "#0a3a41",
+              },
+              accent: {
+                50: "#ecf6f7", 100: "#d3ecee", 200: "#a6d8dc", 300: "#6dbcc3",
+                400: "#36a0aa", 500: "#117f8a", 600: "#0d6d78", 700: "#0b5862",
+                800: "#0b4850", 900: "#0a3a41",
+              },
+              // Control cells: a definite mid-grey, never a tint of the canvas
+              ctrl: { DEFAULT: "#dde1e6", line: "#858f9b", hover: "#d0d5dc" },
+              // Comparison series 2 and 3 (series 1 is petrol)
+              vermilion: { 50: "#fdf0eb", 100: "#fadccf", 400: "#e57a52", 500: "#d4572a", 600: "#b44520", 700: "#8f371b" },
+              gold: { 50: "#fdf7e6", 100: "#f9ebc0", 400: "#e0b33f", 500: "#b8890f", 600: "#a67a10", 700: "#82600e" },
+              amber: {
+                50: "#fff8eb", 100: "#feedc6", 200: "#fbd98a", 300: "#f6c04d",
+                400: "#eda623", 500: "#d18a0c", 600: "#a96c07", 700: "#82520a", 800: "#613d0c", 900: "#48300d",
+              },
+              red: {
+                50: "#fdf0ef", 100: "#fbdcd9", 200: "#f5b8b1", 300: "#ec8b81",
+                400: "#de5f53", 500: "#c84133", 600: "#a83226", 700: "#862a21", 800: "#66231d", 900: "#4b1c18",
+              },
+            },
+            fontFamily: {
+              sans: ['"Source Sans 3"', "system-ui", "-apple-system", "sans-serif"],
+              display: ['"Source Serif 4"', "Georgia", "serif"],
+              mono: ['"IBM Plex Mono"', "ui-monospace", "monospace"],
+            },
+            boxShadow: {
+              card: "0 1px 2px rgba(20, 23, 26, 0.06), 0 2px 6px -2px rgba(20, 23, 26, 0.06)",
+              pop: "0 4px 10px -2px rgba(20, 23, 26, 0.12), 0 12px 28px -8px rgba(20, 23, 26, 0.2)",
+            },
+          },
+        },
+      };
+    </script>
+    <style type="text/tailwindcss">
+      @layer base {
+        body { @apply bg-paper text-ink-700 antialiased; font-size: 15px; }
+        ::selection { @apply bg-accent-100 text-ink-900; }
+        input, select, textarea { caret-color: theme("colors.accent.600"); }
+        :focus-visible { outline: 2px solid theme("colors.accent.500"); outline-offset: 2px; }
+        input[type="range"] { accent-color: theme("colors.accent.600"); }
+        * { scrollbar-color: theme("colors.ink.300") transparent; }
+      }
+      @layer components {
+        .panel { @apply bg-white border border-ink-200 rounded-lg shadow-card; }
+        .panel-head { @apply flex flex-wrap items-center justify-between gap-x-3 gap-y-2 px-4 py-3 border-b border-ink-100; }
+        .panel-title { @apply font-display text-[15px] font-semibold leading-tight text-ink-900; }
+        .panel-body { @apply p-4; }
+        .field-label { @apply text-xs font-medium text-ink-600 flex items-center gap-1; }
+        .field {
+          @apply h-8 min-w-0 px-2 text-sm text-ink-900 bg-white border border-ink-300 rounded-md tabular-nums
+                 transition-colors hover:border-ink-400
+                 focus:outline-none focus:border-accent-500 focus:ring-2 focus:ring-accent-100;
+        }
+        .field-sm { @apply h-7 text-xs px-1.5; }
+        select.field {
+          @apply appearance-none pr-7 cursor-pointer;
+          background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23636a73' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4.5 6.5 8 10l3.5-3.5'/%3E%3C/svg%3E");
+          background-repeat: no-repeat;
+          background-position: right 0.4rem center;
+          background-size: 14px;
+        }
+        .btn {
+          @apply inline-flex items-center justify-center gap-1.5 h-8 px-3 text-sm font-medium rounded-md border
+                 whitespace-nowrap transition-colors disabled:cursor-not-allowed;
+        }
+        .btn-sm { @apply h-7 px-2.5 text-xs gap-1; }
+        .btn-primary { @apply bg-accent-700 border-accent-700 text-white hover:bg-accent-800 hover:border-accent-800 disabled:bg-ink-200 disabled:border-ink-200 disabled:text-ink-500; }
+        .btn-secondary { @apply bg-white border-ink-300 text-ink-800 hover:bg-ink-50 hover:border-ink-400 disabled:text-ink-400; }
+        .btn-toggle { @apply bg-white border-ink-300 text-ink-700 hover:bg-ink-50 hover:border-ink-400; }
+        .btn-toggle[aria-pressed="true"] { @apply bg-accent-50 border-accent-600 text-accent-800; }
+        .chip {
+          @apply h-7 px-2.5 text-xs font-medium text-ink-700 bg-ink-50 border border-ink-200 rounded-md
+                 transition-colors hover:bg-white hover:border-ink-400 hover:text-ink-900;
+        }
+        .canvas {
+          background-color: theme("colors.ink.50");
+          background-image: radial-gradient(theme("colors.ink.300") 1px, transparent 1px);
+          background-size: 14px 14px;
+        }
+        .cell-off {
+          background-image: repeating-linear-gradient(135deg, transparent 0 4px, theme("colors.ink.300") 4px 5px);
+        }
+      }
+    </style>
 
     <!-- React 18 
     <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
@@ -87,37 +191,38 @@
       #loading-overlay {
         position: fixed;
         inset: 0;
-        background: rgba(255, 255, 255, 0.95);
+        background: #f2f3f5;
         display: flex;
         flex-direction: column;
         align-items: center;
         justify-content: center;
         z-index: 9999;
-        font-family: system-ui, -apple-system, sans-serif;
+        font-family: "Source Sans 3", system-ui, -apple-system, sans-serif;
+        color: #353a41;
       }
       #loading-overlay.hidden { display: none; }
       .spinner {
-        width: 48px;
-        height: 48px;
-        border: 4px solid #e2e8f0;
-        border-top-color: #3b82f6;
+        width: 32px;
+        height: 32px;
+        border: 3px solid #dfe2e6;
+        border-top-color: #0b5862;
         border-radius: 50%;
-        animation: spin 1s linear infinite;
+        animation: spin 0.9s linear infinite;
       }
       @keyframes spin { to { transform: rotate(360deg); } }
       #error-display {
         display: none;
         max-width: 600px;
         padding: 24px;
-        background: #fef2f2;
-        border: 1px solid #fecaca;
+        background: #fdf0ef;
+        border: 1px solid #f5b8b1;
         border-radius: 8px;
         margin-top: 24px;
       }
       #error-display.show { display: block; }
       #error-display pre {
-        background: #1e293b;
-        color: #f8fafc;
+        background: #22262b;
+        color: #eef0f2;
         padding: 16px;
         border-radius: 4px;
         overflow-x: auto;
@@ -132,10 +237,10 @@
   <body>
     <div id="loading-overlay">
       <div class="spinner"></div>
-      <p id="loading-status" style="margin-top: 16px; color: #64748b;">Loading WASM module...</p>
+      <p id="loading-status" style="margin-top: 14px; color: #4b5159; font-size: 14px;">Loading the statistical engine…</p>
       <div id="error-display">
-        <h3 style="color: #dc2626; font-weight: 600; margin: 0;">Error Loading Application</h3>
-        <p id="error-message" style="color: #7f1d1d; margin-top: 8px;"></p>
+        <h3 style="color: #a83226; font-weight: 600; margin: 0;">The calculator could not load</h3>
+        <p id="error-message" style="color: #862a21; margin-top: 8px;"></p>
         <pre id="error-stack"></pre>
       </div>
     </div>
@@ -232,7 +337,7 @@
     <script src="reportGenerator.js"></script>
     <!-- Main application (JSX transformed by Babel) 
     <script type="text/babel" src="App.jsx" async></script>-->
-    <script src="app.js?v=2" defer></script>
+    <script src="app.js?v=5" defer></script>
 
     <script>
       // Error handling

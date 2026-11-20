@@ -120,8 +120,8 @@ HEAD = """<!DOCTYPE html>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/site.css">
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=Source+Sans+3:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/site.css?v=4">
 {math}
 {jsonld}
 </head>
@@ -171,7 +171,6 @@ def page(path, title, desc, body, rail=None, math=True):
 # ==========================================================================
 
 FEATURES = r"""
-<p class="eyebrow">Features</p>
 <h1>What this calculator does that others don&rsquo;t</h1>
 <p class="lede">Most cluster trial sample size tools implement one design and one variance
 formula. This one lets you draw an arbitrary allocation schedule, compare designs side by
@@ -186,7 +185,6 @@ side, choose among ten inference methods, and export a full audit of the computa
 ) + r"""
 
 <div class="feature">
-<p class="feature__tag">Design</p>
 <h2 id="grid">Draw the trial instead of picking from a menu</h2>
 <p>Click a cell to cycle it between control, intervention and not enrolled. Right-click a
 row or column header to insert, delete, or set a whole sequence or period at once. Presets
@@ -202,7 +200,6 @@ size individually.</p>
 </div>
 
 <div class="feature">
-<p class="feature__tag">Inference</p>
 <h2 id="estimators">Ten estimators, not one</h2>
 <p>Power depends on how you will analyse the trial, and the difference is not small. A
 mixed model with a normal approximation and a GEE with a robust sandwich variance can
@@ -217,7 +214,6 @@ the spread rather than guess at it.</p>
 </div>
 
 <div class="feature">
-<p class="feature__tag">Comparison</p>
 <h2 id="compare">Up to three designs open at once</h2>
 <p>Sample size decisions are comparative. Is it cheaper to add clusters or to recruit more
 people per cluster? Does a baseline period buy back enough precision to justify the extra
@@ -229,7 +225,6 @@ Duplicating a design and changing one thing is a two-click operation.</p>
 </div>
 
 <div class="feature">
-<p class="feature__tag">Optimal design</p>
 <h2 id="optimal">Optimal weights, shown on the grid</h2>
 <p>Given a design and a correlation structure, some cluster-periods carry far more
 information about the treatment effect than others. The calculator solves for the optimal
@@ -243,7 +238,6 @@ is wasting data.</p>
 </div>
 
 <div class="feature">
-<p class="feature__tag">Diagnostics</p>
 <h2 id="warnings">Warnings when the numbers should not be trusted</h2>
 <p>Two failure modes are common enough that the calculator watches for them.</p>
 <p><strong>Optimistic inference.</strong> If your selected estimator reports power more
@@ -262,7 +256,6 @@ power figure means anything.</p>
 </div>
 
 <div class="feature">
-<p class="feature__tag">Export</p>
 <h2 id="verification">A verification bundle you can hand to a reviewer</h2>
 <p>This is the feature with no equivalent anywhere else. One click exports an archive
 containing the design matrix, the assumed covariance matrix, the information matrix and
@@ -278,7 +271,6 @@ web app, this is the answer to that objection.</p>
 </div>
 
 <div class="feature">
-<p class="feature__tag">Export</p>
 <h2 id="figures">Publication-ready diagrams and plots</h2>
 <p>Export the allocation grid as a PNG for your protocol or grant application. Export
 power curves and power surfaces as PNG or SVG at publication resolution. Plot power or
@@ -289,7 +281,6 @@ simultaneously.</p>
 </div>
 
 <div class="feature">
-<p class="feature__tag">Sessions</p>
 <h2 id="save">Save the session, come back to it</h2>
 <p>Export all open designs, with their parameters and results, to a JSON file, and import
 it later to resume exactly where you stopped. Sample size calculations get revisited
@@ -299,7 +290,6 @@ means the next revision takes minutes.</p>
 </div>
 
 <div class="feature">
-<p class="feature__tag">Privacy</p>
 <h2 id="local">Everything runs in your browser</h2>
 <p>The statistical engine is compiled to WebAssembly and executes locally. No design,
 parameter, or result is transmitted anywhere. There is no account, no login, and nothing
@@ -319,20 +309,19 @@ to install.</p>
 """
 
 GUIDE = r"""
-<p class="eyebrow">Getting started</p>
 <h1>Your first sample size calculation</h1>
 <p class="lede">A walkthrough for a parallel cluster randomised trial with a continuous
 outcome, then the same design extended to a stepped wedge. Ten minutes, no installation.</p>
 
 <ol class="steps">
 <li>
-<h3 id="preset">Choose a starting shape</h3>
+<h2 id="preset">Choose a starting shape</h2>
 <p>The calculator opens on a two-arm parallel design with ten clusters per arm. Presets
 across the top load the other standard schedules. Pick the one closest to your trial
 &mdash; you will edit it next.</p>
 </li>
 <li>
-<h3 id="model">Draw the schedule</h3>
+<h2 id="model">Draw the schedule</h2>
 <p>Click any cell to cycle it through control, intervention, and not enrolled. Right-click
 a row or column header to insert or delete sequences and periods, or to set an entire
 sequence or period in one action. The number beside each row label is the number of
@@ -342,8 +331,8 @@ four sequences you need five periods, with each sequence crossing over one perio
 than the last.</p>
 </li>
 <li>
-<h3 id="effect">Set the outcome and effect size</h3>
-<p>Under <span class="param">Analysis Options</span>, choose continuous, binary, or count.
+<h2 id="effect">Set the outcome and effect size</h2>
+<p>Under <span class="param">Analysis</span>, choose continuous, binary, or count.
 The treatment effect field relabels itself accordingly: a mean difference for continuous
 outcomes, an absolute risk difference for binary, a rate ratio for counts. Binary and count
 outcomes also need a baseline &mdash; the control-arm probability or rate.</p>
@@ -352,7 +341,7 @@ continuous outcomes the calculator works on the outcome&rsquo;s own scale, with 
 residual variance implied by the ICC.</p>
 </li>
 <li>
-<h3 id="correlation">Set the correlation</h3>
+<h2 id="correlation">Set the correlation</h2>
 <p>The intracluster correlation is the one parameter people most often guess at. Values
 between 0.01 and 0.05 are typical for health service outcomes measured on patients within
 practices or wards; higher values are common for outcomes measured on staff, or for
@@ -363,15 +352,15 @@ in time they are &mdash; usually optimistic for a trial running over years.
 <a href="/methods/correlation.html">The alternatives are explained here.</a></p>
 </li>
 <li>
-<h3 id="sizes">Set cluster sizes</h3>
-<p>Under <span class="param">Sample Size Options</span>, enter the mean number of
+<h2 id="sizes">Set cluster sizes</h2>
+<p>Under <span class="param">Sample size</span>, enter the mean number of
 individuals per cluster-period. If cluster sizes vary substantially, enter a coefficient
 of variation; the calculator inflates the variance accordingly. If you know the exact size
 of each cell &mdash; which happens when clusters are known in advance &mdash; switch to
 exact mode and right-click cells to set them individually.</p>
 </li>
 <li>
-<h3 id="estimator">Choose how you will analyse the trial</h3>
+<h2 id="estimator">Choose how you will analyse the trial</h2>
 <p>Set the estimator to match your analysis plan, not to maximise power. If your
 statistical analysis plan says a linear mixed model with Kenward&ndash;Roger degrees of
 freedom, choose that. Then change it a few times and watch what happens to power. A design
@@ -379,14 +368,14 @@ whose power is stable across estimators is robust; one that is only adequately p
 under the most optimistic method is not.</p>
 </li>
 <li>
-<h3 id="results">Read the results, and the warnings</h3>
+<h2 id="results">Read the results, and the warnings</h2>
 <p>Power, degrees of freedom, standard error, and minimum detectable effect appear in the
 results table. If a warning panel appears above it, read it before anything else &mdash;
 it means either that your estimator choice is flattering the design, or that the
 correlation parameters you have specified are hard to realise in the model being fitted.</p>
 </li>
 <li>
-<h3 id="explore">Explore rather than solve</h3>
+<h2 id="explore">Explore rather than solve</h2>
 <p>The plot below the results is the most useful part of the tool. Set the x-axis to total
 clusters and you can read off the number needed for 80% power directly. Set it to ICC and
 you can see how sensitive that answer is to a parameter you are guessing. Switch to the
@@ -394,14 +383,14 @@ contour view to see power across cluster count and cluster size at once &mdash; 
 the real trade-off when recruitment is the binding constraint.</p>
 </li>
 <li>
-<h3 id="compare">Add a comparison</h3>
-<p>Use <span class="param">Add Design</span> to duplicate what you have, then change one
+<h2 id="compare">Add a comparison</h2>
+<p>Use <span class="param">Add design</span> to duplicate what you have, then change one
 thing: add a baseline period, drop a sequence, halve the cluster size. Both designs appear
 side by side in the results table and overlaid on the plot. This is usually more
 informative than any single number.</p>
 </li>
 <li>
-<h3 id="export">Export</h3>
+<h2 id="export">Export</h2>
 <p>Save the session as JSON so you can return to it. Export the grid as a PNG for the
 protocol. If the calculation is going into a grant application or a submission, export the
 verification bundle &mdash; it contains every matrix in the computation and an R script
@@ -421,7 +410,6 @@ Report that sensitivity, and reviewers will trust the headline number more, not 
 
 
 STEPPED = r"""
-<p class="eyebrow">Designs</p>
 <h1>Stepped wedge sample size calculation</h1>
 <p class="lede">In a stepped wedge cluster randomised trial every cluster eventually
 receives the intervention, but the order in which they cross over is randomised. It is the
@@ -550,7 +538,6 @@ design a good choice? <em>International Journal of Epidemiology</em> 49(3), 1043
 
 
 ESTIMATORS = r"""
-<p class="eyebrow">Methods</p>
 <h1>Estimators and inference</h1>
 <p class="lede">Power is not a property of a design alone. It is a property of a design
 together with an analysis method. This page sets out what each estimator in the calculator
@@ -657,7 +644,6 @@ knowing at the protocol stage rather than at the analysis.</p>
 
 
 CORRELATION = r"""
-<p class="eyebrow">Methods</p>
 <h1>Correlation structures and sampling</h1>
 <p class="lede">In a longitudinal cluster trial, the assumption you make about how
 correlation decays over time can change the required sample size by a factor of two. It
@@ -785,7 +771,6 @@ propagating that uncertainty into the sample size is more honest than picking th
 
 
 VERIFICATION = r"""
-<p class="eyebrow">Methods</p>
 <h1>The verification bundle</h1>
 <p class="lede">Every power calculation the tool produces can be exported as a complete
 computational audit: every matrix in the derivation, plus an R script that reproduces the

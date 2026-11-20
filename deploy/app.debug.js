@@ -1166,26 +1166,26 @@ const statusConfig = {
   [CellStatus.CONTROL]: {
     label: "Control",
     shortLabel: "C",
-    bg: "bg-slate-100",
-    border: "border-slate-300",
-    text: "text-slate-700",
-    hoverBg: "hover:bg-slate-200"
+    bg: "bg-ctrl",
+    border: "border-ctrl-line",
+    text: "text-ink-700",
+    hoverBg: "hover:bg-ctrl-hover"
   },
   [CellStatus.INTERVENTION]: {
     label: "Intervention",
     shortLabel: "I",
-    bg: "bg-emerald-100",
-    border: "border-emerald-400",
-    text: "text-emerald-800",
-    hoverBg: "hover:bg-emerald-200"
+    bg: "bg-arm-500",
+    border: "border-arm-700",
+    text: "text-white",
+    hoverBg: "hover:bg-arm-600"
   },
   [CellStatus.NOT_ENROLLED]: {
     label: "Not enrolled",
     shortLabel: "\u2014",
-    bg: "bg-gray-50",
-    border: "border-gray-200",
-    text: "text-gray-400",
-    hoverBg: "hover:bg-gray-100"
+    bg: "bg-white cell-off",
+    border: "border-ink-400 border-dashed",
+    text: "text-ink-500",
+    hoverBg: "hover:border-ink-600"
   }
 };
 const statusCycle = [
@@ -1195,27 +1195,54 @@ const statusCycle = [
 ];
 const designColors = [
   {
-    bg: "bg-blue-500",
-    text: "text-blue-600",
-    light: "bg-blue-50",
-    border: "border-blue-500",
-    hex: "#3b82f6"
+    bg: "bg-arm-600",
+    text: "text-arm-700",
+    light: "bg-arm-50",
+    border: "border-arm-600",
+    hex: "#0d6d78"
   },
   {
-    bg: "bg-purple-500",
-    text: "text-purple-600",
-    light: "bg-purple-50",
-    border: "border-purple-500",
-    hex: "#a855f7"
+    bg: "bg-vermilion-500",
+    text: "text-vermilion-600",
+    light: "bg-vermilion-50",
+    border: "border-vermilion-500",
+    hex: "#d4572a"
   },
   {
-    bg: "bg-orange-500",
-    text: "text-orange-600",
-    light: "bg-orange-50",
-    border: "border-orange-500",
-    hex: "#f97316"
+    bg: "bg-gold-500",
+    text: "text-gold-700",
+    light: "bg-gold-50",
+    border: "border-gold-500",
+    hex: "#b8890f"
   }
 ];
+const ICON_PATHS = {
+  download: "M8 2.5v8M4.75 7.5 8 10.75 11.25 7.5M3 13.5h10",
+  upload: "M8 10.75v-8M4.75 5.75 8 2.5l3.25 3.25M3 13.5h10",
+  refresh: "M13.25 8a5.25 5.25 0 1 1-1.54-3.71M13.25 2.75v2.5h-2.5",
+  check: "M3.5 8.5 6.5 11.5 12.5 4.5",
+  alert: "M8 2.25 14.25 13.25H1.75L8 2.25ZM8 6.5v3M8 11.4v.1",
+  info: "M8 14.25A6.25 6.25 0 1 0 8 1.75a6.25 6.25 0 0 0 0 12.5ZM8 7.25v4M8 4.9v.1",
+  plus: "M8 3.5v9M3.5 8h9",
+  close: "M4.5 4.5l7 7M11.5 4.5l-7 7",
+  bundle: "M2.75 5 8 2.25 13.25 5v6L8 13.75 2.75 11V5ZM2.75 5 8 7.75 13.25 5M8 7.75v6",
+  image: "M2.75 3.25h10.5v9.5H2.75zM2.75 10.5l3-3 2.5 2.5 1.75-1.75 3.25 3.25M10.25 6.25v.1"
+};
+const Icon = ({ name, className = "w-4 h-4" }) => /* @__PURE__ */ React.createElement(
+  "svg",
+  {
+    viewBox: "0 0 16 16",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 1.6,
+    strokeLinecap: "round",
+    strokeLinejoin: "round",
+    className: `shrink-0 ${className}`,
+    "aria-hidden": "true"
+  },
+  /* @__PURE__ */ React.createElement("path", { d: ICON_PATHS[name] })
+);
+const SEQ_HEADER_W = 84;
 const NumericInput = ({ value, onChange, min, max, step, className }) => {
   const [raw, setRaw] = useState(String(value));
   const [focused, setFocused] = useState(false);
@@ -1248,6 +1275,10 @@ const NumericInput = ({ value, onChange, min, max, step, className }) => {
     }
   );
 };
+const clampToViewport = (x, y, w, h) => ({
+  left: Math.max(8, Math.min(x, window.innerWidth - w - 8)),
+  top: Math.max(8, Math.min(y, window.innerHeight - h - 8))
+});
 const ContextMenu = ({ x, y, items, onClose }) => {
   const menuRef = useRef(null);
   useEffect(() => {
@@ -1270,11 +1301,17 @@ const ContextMenu = ({ x, y, items, onClose }) => {
     "div",
     {
       ref: menuRef,
-      className: "fixed bg-white rounded-lg shadow-xl border border-slate-200 py-1 z-50 min-w-[160px]",
-      style: { left: x, top: y }
+      role: "menu",
+      className: "fixed bg-white rounded-md shadow-pop border border-ink-200 py-1 z-50 min-w-[180px]",
+      style: clampToViewport(
+        x,
+        y,
+        180,
+        items.reduce((h, it) => h + (it.separator ? 9 : 32), 8)
+      )
     },
     items.map(
-      (item, idx) => item.separator ? /* @__PURE__ */ React.createElement("div", { key: idx, className: "h-px bg-slate-200 my-1" }) : /* @__PURE__ */ React.createElement(
+      (item, idx) => item.separator ? /* @__PURE__ */ React.createElement("div", { key: idx, className: "h-px bg-ink-200 my-1" }) : /* @__PURE__ */ React.createElement(
         "button",
         {
           key: idx,
@@ -1283,8 +1320,9 @@ const ContextMenu = ({ x, y, items, onClose }) => {
             onClose();
           },
           disabled: item.disabled,
-          className: `w-full text-left px-3 py-1.5 text-sm
-              ${item.disabled ? "text-slate-300 cursor-not-allowed" : "text-slate-700 hover:bg-slate-100"}
+          role: "menuitem",
+          className: `w-full text-left px-3 py-1.5 text-sm transition-colors
+              ${item.disabled ? "text-ink-300 cursor-not-allowed" : "text-ink-800 hover:bg-ink-50"}
               ${item.danger && !item.disabled ? "text-red-600 hover:bg-red-50" : ""}
             `
         },
@@ -1293,27 +1331,77 @@ const ContextMenu = ({ x, y, items, onClose }) => {
     )
   );
 };
+const CellSizeEditor = ({ x, y, initial, onSave, onClose }) => {
+  const formRef = useRef(null);
+  const inputRef = useRef(null);
+  const [value, setValue] = useState(String(initial));
+  useEffect(() => {
+    var _a;
+    (_a = inputRef.current) == null ? void 0 : _a.select();
+    const handleClickOutside = (e) => {
+      if (formRef.current && !formRef.current.contains(e.target)) onClose();
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [onClose]);
+  const parsed = parseInt(value, 10);
+  const valid = !isNaN(parsed) && parsed > 0;
+  return /* @__PURE__ */ React.createElement(
+    "form",
+    {
+      ref: formRef,
+      onSubmit: (e) => {
+        e.preventDefault();
+        if (!valid) return;
+        onSave(parsed);
+        onClose();
+      },
+      onKeyDown: (e) => {
+        if (e.key === "Escape") onClose();
+      },
+      className: "fixed z-50 w-60 bg-white border border-ink-200 rounded-md shadow-pop p-3",
+      style: clampToViewport(x, y, 240, 112)
+    },
+    /* @__PURE__ */ React.createElement("label", { htmlFor: "cell-size-input", className: "field-label mb-1.5" }, "Cluster-period size"),
+    /* @__PURE__ */ React.createElement("div", { className: "flex gap-2" }, /* @__PURE__ */ React.createElement(
+      "input",
+      {
+        id: "cell-size-input",
+        ref: inputRef,
+        type: "number",
+        min: "1",
+        step: "1",
+        value,
+        onChange: (e) => setValue(e.target.value),
+        "aria-invalid": !valid,
+        className: `field flex-1 w-0 ${valid ? "" : "border-red-400 focus:border-red-500 focus:ring-red-100"}`
+      }
+    ), /* @__PURE__ */ React.createElement("button", { type: "submit", disabled: !valid, className: "btn btn-primary" }, "Set")),
+    /* @__PURE__ */ React.createElement("p", { className: `mt-1.5 text-xs ${valid ? "text-ink-500" : "text-red-700"}` }, valid ? "Enter to set, Esc to cancel." : "Enter a whole number above 0.")
+  );
+};
 const InsertButton = ({ onClick, className = "" }) => /* @__PURE__ */ React.createElement(
   "button",
   {
     onClick,
     className: `
       flex items-center justify-center
-      bg-blue-500 text-white rounded-full
+      bg-accent-600 text-white rounded-full
       opacity-0 group-hover:opacity-100 focus:opacity-100
       transition-opacity duration-150
-      shadow-sm hover:shadow-md hover:bg-blue-600
-      focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-1
-      w-4 h-4 text-xs
+      hover:bg-accent-700
+      focus:outline-none focus:ring-2 focus:ring-accent-300 focus:ring-offset-1
+      w-4 h-4
       ${className}
-    `
+    `,
+    "aria-label": "Insert"
   },
-  "+"
+  /* @__PURE__ */ React.createElement(Icon, { name: "plus", className: "w-3 h-3" })
 );
 const PeriodHeader = ({ index, onContextMenu, cellSize }) => /* @__PURE__ */ React.createElement(
   "div",
   {
-    className: "flex items-center justify-center font-medium text-slate-600 text-sm \r\n               cursor-context-menu select-none hover:bg-slate-100 rounded transition-colors",
+    className: "flex items-center justify-center font-mono text-xs text-ink-500\n               cursor-context-menu select-none hover:bg-ink-100 hover:text-ink-900 rounded transition-colors",
     style: { width: cellSize, height: 32 },
     onContextMenu: (e) => {
       e.preventDefault();
@@ -1334,7 +1422,7 @@ const SequenceHeader = ({
   "div",
   {
     className: "flex items-center justify-end gap-2 pr-2",
-    style: { width: 100, height: cellSize }
+    style: { width: SEQ_HEADER_W, height: cellSize }
   },
   /* @__PURE__ */ React.createElement(
     "input",
@@ -1343,21 +1431,21 @@ const SequenceHeader = ({
       min: "1",
       value: clusters,
       onChange: (e) => onClustersChange(index, parseInt(e.target.value) || 1),
-      className: "w-12 px-1 py-0.5 text-sm text-center border border-slate-300 rounded\r\n                 focus:outline-none focus:ring-1 focus:ring-blue-500",
+      className: "field field-sm w-12 text-center",
       title: "Number of clusters"
     }
   ),
   /* @__PURE__ */ React.createElement(
     "div",
     {
-      className: "font-medium text-slate-600 text-sm cursor-context-menu select-none \r\n                 hover:bg-slate-100 rounded px-1 transition-colors",
+      className: "font-mono text-xs text-ink-500 whitespace-nowrap cursor-context-menu select-none\n                 hover:bg-ink-100 hover:text-ink-900 rounded px-1 py-0.5 transition-colors",
       onContextMenu: (e) => {
         e.preventDefault();
         onContextMenu(e, index);
       },
       title: "Right-click for options"
     },
-    "Seq ",
+    "S",
     index + 1
   )
 );
@@ -1386,8 +1474,8 @@ const DesignCellComponent = ({
         onContextMenu: (e) => onContextMenu(e, rowIndex, colIndex),
         className: `
           ${config.bg} ${config.border} ${config.text} ${config.hoverBg}
-          border-2 rounded-lg transition-all duration-300 ease-in-out
-          focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1
+          border-[1.5px] rounded-md transition-[width,height] duration-300 ease-out
+          focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:ring-offset-1
           flex flex-col items-center justify-center
         `,
         style: {
@@ -1397,42 +1485,90 @@ const DesignCellComponent = ({
         },
         title: `${config.label}${sampleSizeMode === "exact" && cell.sampleSize ? ` (n=${cell.sampleSize})` : ""}${scale < 1 ? ` (weight: ${(scale * 100).toFixed(0)}%)` : ""}${sampleSizeMode === "exact" && cell.status !== CellStatus.NOT_ENROLLED ? " \u2014 Right-click to set size" : ""}`
       },
-      sampleSizeMode === "exact" && cell.sampleSize !== null && cell.status !== CellStatus.NOT_ENROLLED && /* @__PURE__ */ React.createElement("span", { className: "font-semibold text-sm" }, "n=", cell.sampleSize),
-      /* @__PURE__ */ React.createElement("span", { className: "text-[10px] uppercase tracking-wide opacity-70" }, config.shortLabel)
+      sampleSizeMode === "exact" && cell.sampleSize !== null && cell.status !== CellStatus.NOT_ENROLLED && /* @__PURE__ */ React.createElement("span", { className: "font-mono font-medium text-xs tabular-nums" }, "n=", cell.sampleSize),
+      /* @__PURE__ */ React.createElement("span", { className: "font-mono text-[10px] font-semibold" }, config.shortLabel)
     )
   );
 };
+const RESULT_ROWS = [
+  { key: "power", label: "Power" },
+  { key: "dof", label: "Degrees of freedom" },
+  { key: "se", label: "Standard error" },
+  { key: "mde", label: "Minimum detectable effect" }
+];
 const ResultsTable = ({
   designs,
   cachedResults,
   isStale,
   isCalculating,
-  onRecalculate
+  onRecalculate,
+  onExportBundle,
+  isExporting
 }) => {
-  return /* @__PURE__ */ React.createElement(
-    "div",
+  return /* @__PURE__ */ React.createElement("section", { className: "panel" }, /* @__PURE__ */ React.createElement("div", { className: "panel-head" }, /* @__PURE__ */ React.createElement("h2", { className: "panel-title" }, "Results"), isStale && /* @__PURE__ */ React.createElement(
+    "button",
     {
-      className: `bg-white rounded-xl shadow-lg border border-slate-200 p-4 transition-opacity ${isStale ? "opacity-60" : ""}`
+      onClick: onRecalculate,
+      disabled: isCalculating,
+      className: "btn btn-primary btn-sm"
     },
-    /* @__PURE__ */ React.createElement("div", { className: "flex items-center justify-between mb-3" }, /* @__PURE__ */ React.createElement("h2", { className: "text-sm font-semibold text-slate-700" }, "Results Comparison"), isStale && /* @__PURE__ */ React.createElement(
-      "button",
+    /* @__PURE__ */ React.createElement(
+      Icon,
       {
-        onClick: onRecalculate,
-        disabled: isCalculating,
-        className: "px-3 py-1 text-xs bg-blue-500 text-white rounded-lg\r\n                       hover:bg-blue-600 disabled:bg-blue-300 transition-colors\r\n                       flex items-center gap-1"
-      },
-      isCalculating ? /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("span", { className: "animate-spin" }, "\u27F3"), " Calculating...") : /* @__PURE__ */ React.createElement(React.Fragment, null, "\u27F3 Recalculate")
-    )),
-    /* @__PURE__ */ React.createElement("div", { className: "overflow-x-auto" }, /* @__PURE__ */ React.createElement("table", { className: "w-full text-sm" }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", { className: "border-b border-slate-200" }, /* @__PURE__ */ React.createElement("th", { className: "text-left py-2 px-3 font-medium text-slate-600" }, "Metric"), designs.map((d, i) => /* @__PURE__ */ React.createElement(
-      "th",
+        name: "refresh",
+        className: `w-3.5 h-3.5 ${isCalculating ? "animate-spin" : ""}`
+      }
+    ),
+    isCalculating ? "Calculating\u2026" : "Recalculate"
+  )), /* @__PURE__ */ React.createElement("div", { className: "overflow-x-auto px-4 py-2" }, /* @__PURE__ */ React.createElement("table", { className: "w-full text-sm" }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", { className: "border-b border-ink-200" }, /* @__PURE__ */ React.createElement("th", { className: "text-left py-2 pr-3 text-xs font-medium text-ink-500" }, "Metric"), designs.map((d, i) => /* @__PURE__ */ React.createElement(
+    "th",
+    {
+      key: i,
+      className: "text-right py-2 pl-3 text-xs font-semibold text-ink-800 whitespace-nowrap"
+    },
+    /* @__PURE__ */ React.createElement("span", { className: "inline-flex items-center gap-1.5" }, /* @__PURE__ */ React.createElement(
+      "span",
       {
-        key: i,
-        className: `text-center py-2 px-3 font-medium ${designColors[i].text}`
+        className: `w-2 h-2 rounded-full ${designColors[i].bg}`
+      }
+    ), d.name)
+  )))), /* @__PURE__ */ React.createElement(
+    "tbody",
+    {
+      className: `transition-colors ${isStale ? "text-ink-400" : "text-ink-900"}`
+    },
+    RESULT_ROWS.map((row, r) => /* @__PURE__ */ React.createElement(
+      "tr",
+      {
+        key: row.key,
+        className: r < RESULT_ROWS.length - 1 ? "border-b border-ink-100" : ""
       },
-      d.name
-    )))), /* @__PURE__ */ React.createElement("tbody", null, /* @__PURE__ */ React.createElement("tr", { className: "border-b border-slate-100" }, /* @__PURE__ */ React.createElement("td", { className: "py-2 px-3 text-slate-600" }, "Power"), cachedResults.map((r, i) => /* @__PURE__ */ React.createElement("td", { key: i, className: "text-center py-2 px-3 font-mono" }, r.power))), /* @__PURE__ */ React.createElement("tr", { className: "border-b border-slate-100" }, /* @__PURE__ */ React.createElement("td", { className: "py-2 px-3 text-slate-600" }, "Degrees of Freedom"), cachedResults.map((r, i) => /* @__PURE__ */ React.createElement("td", { key: i, className: "text-center py-2 px-3 font-mono" }, r.dof))), /* @__PURE__ */ React.createElement("tr", { className: "border-b border-slate-100" }, /* @__PURE__ */ React.createElement("td", { className: "py-2 px-3 text-slate-600" }, "Standard Error"), cachedResults.map((r, i) => /* @__PURE__ */ React.createElement("td", { key: i, className: "text-center py-2 px-3 font-mono" }, r.se))), /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("td", { className: "py-2 px-3 text-slate-600" }, "Min. Detectable Effect"), cachedResults.map((r, i) => /* @__PURE__ */ React.createElement("td", { key: i, className: "text-center py-2 px-3 font-mono" }, r.mde)))))),
-    isStale && !isCalculating && /* @__PURE__ */ React.createElement("p", { className: "text-xs text-amber-600 mt-2 text-center" }, "\u26A0 Results are outdated. Click Recalculate to update.")
-  );
+      /* @__PURE__ */ React.createElement("td", { className: "py-1.5 pr-3 text-ink-600" }, row.label),
+      cachedResults.map((res, i) => /* @__PURE__ */ React.createElement(
+        "td",
+        {
+          key: i,
+          className: `text-right py-1.5 pl-3 font-mono tabular-nums ${row.key === "power" ? "font-medium" : ""}`
+        },
+        res[row.key]
+      ))
+    ))
+  ))), isStale && !isCalculating && /* @__PURE__ */ React.createElement("p", { className: "flex items-center gap-1.5 px-4 py-2 border-t border-amber-100 text-xs text-amber-800 bg-amber-50" }, /* @__PURE__ */ React.createElement(Icon, { name: "alert", className: "w-3.5 h-3.5" }), "These results are out of date. Recalculate to update them."), /* @__PURE__ */ React.createElement("div", { className: "flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-3 border-t border-ink-100 bg-ink-50 rounded-b-lg" }, /* @__PURE__ */ React.createElement("p", { className: "text-xs leading-snug text-ink-600 max-w-[34ch]" }, /* @__PURE__ */ React.createElement("span", { className: "block text-sm font-semibold text-ink-900" }, "Verification report"), "Matrices, an R verification script and documentation for regulatory review."), /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      onClick: onExportBundle,
+      disabled: isExporting || isStale,
+      className: "btn btn-primary"
+    },
+    /* @__PURE__ */ React.createElement(
+      Icon,
+      {
+        name: isExporting ? "refresh" : "bundle",
+        className: `w-4 h-4 ${isExporting ? "animate-spin" : ""}`
+      }
+    ),
+    isExporting ? "Generating\u2026" : "Export verification bundle"
+  )));
 };
 const PowerWarning = ({ warning, selectedEstimator, designName }) => {
   if (!warning) return null;
@@ -1450,19 +1586,18 @@ const PowerWarning = ({ warning, selectedEstimator, designName }) => {
   };
   const isRobust = ["gee_exchangeable", "gee_independence_robust", "gee_exchangeable_ttest"].includes(selectedEstimator);
   const isSmallSampleCorrected = ["satterthwaite", "kenward_roger", "mixed_model_ttest", "gee_exchangeable_ttest", "design_effect_ttest"].includes(selectedEstimator);
-  return /* @__PURE__ */ React.createElement("div", { className: "bg-amber-50 border border-amber-300 rounded-xl p-4 text-sm" }, /* @__PURE__ */ React.createElement("div", { className: "flex items-start gap-2" }, /* @__PURE__ */ React.createElement("span", { className: "text-amber-600 text-lg" }, "\u26A0\uFE0F"), /* @__PURE__ */ React.createElement("div", { className: "flex-1" }, /* @__PURE__ */ React.createElement("p", { className: "font-medium text-amber-800 mb-2" }, "Power estimate may be optimistic"), /* @__PURE__ */ React.createElement("p", { className: "text-amber-700 mb-2" }, "The selected estimator for ", designName, " (", estimatorLabels[selectedEstimator], ") shows power of", " ", /* @__PURE__ */ React.createElement("span", { className: "font-mono font-semibold" }, (warning.selectedPower * 100).toFixed(1), "%"), ", which is more than 10 percentage points higher than", " ", warning.lowEstimators.length === 1 ? estimatorLabels[warning.lowEstimators[0].key] : `${warning.lowEstimators.length} other estimators`, " ", "(lowest: ", /* @__PURE__ */ React.createElement("span", { className: "font-mono font-semibold" }, (warning.minOtherPower * 100).toFixed(1), "%"), ")."), /* @__PURE__ */ React.createElement("p", { className: "text-amber-700" }, !isSmallSampleCorrected && !isRobust && /* @__PURE__ */ React.createElement(React.Fragment, null, "Consider using a small sample correction (Satterthwaite or Kenward-Roger) or robust covariance estimation (GEE Exchangeable Robust) for more conservative estimates."), isSmallSampleCorrected && !isRobust && /* @__PURE__ */ React.createElement(React.Fragment, null, "You are using a small sample correction. Consider also comparing with robust covariance estimation (GEE Exchangeable Robust)."), isRobust && !isSmallSampleCorrected && /* @__PURE__ */ React.createElement(React.Fragment, null, "You are using robust covariance estimation. Consider also comparing with small sample corrections (Satterthwaite or Kenward-Roger)."), isRobust && isSmallSampleCorrected && /* @__PURE__ */ React.createElement(React.Fragment, null, "This estimator already includes corrections. The difference may reflect genuine variation in power across inference approaches for this design.")))));
+  return /* @__PURE__ */ React.createElement("div", { className: "bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm" }, /* @__PURE__ */ React.createElement("div", { className: "flex items-start gap-2.5" }, /* @__PURE__ */ React.createElement(Icon, { name: "alert", className: "w-4 h-4 mt-0.5 text-amber-600" }), /* @__PURE__ */ React.createElement("div", { className: "flex-1" }, /* @__PURE__ */ React.createElement("p", { className: "font-semibold text-amber-900 mb-1.5" }, "Power estimate may be optimistic"), /* @__PURE__ */ React.createElement("p", { className: "text-amber-800 mb-2" }, "The selected estimator for ", designName, " (", estimatorLabels[selectedEstimator], ") shows power of", " ", /* @__PURE__ */ React.createElement("span", { className: "font-mono font-semibold" }, (warning.selectedPower * 100).toFixed(1), "%"), ", which is more than 10 percentage points higher than", " ", warning.lowEstimators.length === 1 ? estimatorLabels[warning.lowEstimators[0].key] : `${warning.lowEstimators.length} other estimators`, " ", "(lowest: ", /* @__PURE__ */ React.createElement("span", { className: "font-mono font-semibold" }, (warning.minOtherPower * 100).toFixed(1), "%"), ")."), /* @__PURE__ */ React.createElement("p", { className: "text-amber-800" }, !isSmallSampleCorrected && !isRobust && /* @__PURE__ */ React.createElement(React.Fragment, null, "Consider using a small sample correction (Satterthwaite or Kenward-Roger) or robust covariance estimation (GEE Exchangeable Robust) for more conservative estimates."), isSmallSampleCorrected && !isRobust && /* @__PURE__ */ React.createElement(React.Fragment, null, "You are using a small sample correction. Consider also comparing with robust covariance estimation (GEE Exchangeable Robust)."), isRobust && !isSmallSampleCorrected && /* @__PURE__ */ React.createElement(React.Fragment, null, "You are using robust covariance estimation. Consider also comparing with small sample corrections (Satterthwaite or Kenward-Roger)."), isRobust && isSmallSampleCorrected && /* @__PURE__ */ React.createElement(React.Fragment, null, "This estimator already includes corrections. The difference may reflect genuine variation in power across inference approaches for this design.")))));
 };
 const CorrelationWarning = ({ warningCode }) => {
-  console.log("CorrelationWarning rendered with:", warningCode);
   if (!warningCode || warningCode === 0) return null;
   const isSevere = warningCode > 1;
-  return /* @__PURE__ */ React.createElement("div", { className: `${isSevere ? "bg-red-50 border-red-300" : "bg-amber-50 border-amber-300"} border rounded-xl p-4 text-sm` }, /* @__PURE__ */ React.createElement("div", { className: "flex items-start gap-2" }, /* @__PURE__ */ React.createElement("span", { className: `${isSevere ? "text-red-600" : "text-amber-600"} text-lg` }, "\u26A0\uFE0F"), /* @__PURE__ */ React.createElement("div", { className: "flex-1" }, /* @__PURE__ */ React.createElement("p", { className: `font-medium ${isSevere ? "text-red-800" : "text-amber-800"} mb-2` }, warningCode === 1 && "Correlation parameters require high random effect variance", warningCode === 2 && "Correlation parameters may not be realistic", warningCode === 3 && "Could not solve for valid model parameters"), /* @__PURE__ */ React.createElement("p", { className: isSevere ? "text-red-700" : "text-amber-700" }, warningCode === 1 && /* @__PURE__ */ React.createElement(React.Fragment, null, "The specified ICC/IAC combination requires moderately high random effect variance in the underlying GLMM. For binomial models this may mean differences in power for marginal (GLMM) and conditional (GEE) models, compare the estimators in the menu. ", " ", /* @__PURE__ */ React.createElement(
+  return /* @__PURE__ */ React.createElement("div", { className: `${isSevere ? "bg-red-50 border-red-200" : "bg-amber-50 border-amber-200"} border rounded-lg p-4 text-sm` }, /* @__PURE__ */ React.createElement("div", { className: "flex items-start gap-2.5" }, /* @__PURE__ */ React.createElement(Icon, { name: "alert", className: `w-4 h-4 mt-0.5 ${isSevere ? "text-red-600" : "text-amber-600"}` }), /* @__PURE__ */ React.createElement("div", { className: "flex-1" }, /* @__PURE__ */ React.createElement("p", { className: `font-semibold ${isSevere ? "text-red-900" : "text-amber-900"} mb-1.5` }, warningCode === 1 && "Correlation parameters require high random effect variance", warningCode === 2 && "Correlation parameters may not be realistic", warningCode === 3 && "Could not solve for valid model parameters"), /* @__PURE__ */ React.createElement("p", { className: isSevere ? "text-red-800" : "text-amber-800" }, warningCode === 1 && /* @__PURE__ */ React.createElement(React.Fragment, null, "The specified ICC/IAC combination requires moderately high random effect variance in the underlying GLMM. For binomial models this may mean differences in power for marginal (GLMM) and conditional (GEE) models, compare the estimators in the menu. ", " ", /* @__PURE__ */ React.createElement(
     "a",
     {
       href: "https://github.com/samuel-watson/ClusterApp2/blob/master/solver.md",
       target: "_blank",
       rel: "noopener noreferrer",
-      className: "underline hover:text-red-900"
+      className: "underline underline-offset-2 font-medium hover:no-underline"
     },
     "Learn more"
   )), warningCode === 2 && /* @__PURE__ */ React.createElement(React.Fragment, null, "The specified ICC/IAC combination requires extreme random effect variance. This implies most individuals have near-deterministic outcomes (always respond or never respond), with the marginal prevalence arising from the population mix rather than individual-level uncertainty. Consider reducing IAC or increasing ICC for more realistic modelling assumptions. For binomial models this will mean differences in power for marginal (GLMM) and conditional (GEE) models, compare the estimators in the menu. ", " ", /* @__PURE__ */ React.createElement(
@@ -1471,7 +1606,7 @@ const CorrelationWarning = ({ warningCode }) => {
       href: "https://github.com/samuel-watson/ClusterApp2/blob/master/solver.md",
       target: "_blank",
       rel: "noopener noreferrer",
-      className: "underline hover:text-red-900"
+      className: "underline underline-offset-2 font-medium hover:no-underline"
     },
     "Learn more"
   )), warningCode === 3 && /* @__PURE__ */ React.createElement(React.Fragment, null, "The solver could not find valid GLMM parameters matching the specified ICC and IAC. This combination is not likely to be achievable in a mixed model. This may arise if the correlation parameters imply most individuals have near-deterministic outcomes (always respond or never respond), with the marginal prevalence arising from the population mix rather than individual-level uncertainty. Power calculations are unreliable. ", " ", /* @__PURE__ */ React.createElement(
@@ -1480,7 +1615,7 @@ const CorrelationWarning = ({ warningCode }) => {
       href: "https://github.com/samuel-watson/ClusterApp2/blob/master/solver.md",
       target: "_blank",
       rel: "noopener noreferrer",
-      className: "underline hover:text-red-900"
+      className: "underline underline-offset-2 font-medium hover:no-underline"
     },
     "Learn more"
   ))))));
@@ -1505,14 +1640,14 @@ const PlotArea = ({
     { value: "icc", label: "ICC", min: 0, max: 0.3, steps: 30 },
     {
       value: "meanClusterSize",
-      label: "Cluster-Period Size",
+      label: "Cluster-period size",
       min: 5,
       max: 100,
       steps: 30
     },
     {
       value: "treatmentEffect",
-      label: "Treatment Effect",
+      label: "Treatment effect",
       min: 0,
       max: 2,
       steps: 30
@@ -1520,7 +1655,7 @@ const PlotArea = ({
     { value: "baseline", label: "Baseline", min: 0.01, max: 0.5, steps: 30 },
     {
       value: "totalClusters",
-      label: "Total Clusters",
+      label: "Total clusters",
       min: 2,
       max: 50,
       steps: 30
@@ -1528,7 +1663,7 @@ const PlotArea = ({
   ];
   const yAxisOptions = [
     { value: "power", label: "Power" },
-    { value: "mde", label: "Min. Detectable Effect" }
+    { value: "mde", label: "Min. detectable effect" }
   ];
   useEffect(() => {
     if (window.Plotly) {
@@ -1598,7 +1733,11 @@ const PlotArea = ({
         type: "scatter",
         mode: "lines",
         name: d.name,
-        line: { color: designColors[idx].hex, width: 2.5 }
+        line: {
+          color: designColors[idx].hex,
+          width: 2.5,
+          dash: ["solid", "dash", "dot"][idx]
+        }
       };
     });
   }, [cacheVersion, xAxis, yAxis, currentXConfig]);
@@ -1631,20 +1770,21 @@ const PlotArea = ({
       z: zValues,
       type: plotType,
       colorscale: [
-        [0, "#fee2e2"],
-        [Math.max(0.01, targetPower - 0.2), "#fef9c3"],
-        [targetPower, "#bbf7d0"],
-        [1, "#22c55e"]
+        [0, "#f7d9cc"],
+        [Math.max(0.01, targetPower - 0.2), "#f6f0e3"],
+        [targetPower, "#a6d8dc"],
+        [1, "#0b5862"]
       ],
       contours: plotType === "contour" ? {
         coloring: "heatmap",
         showlabels: true,
-        labelfont: { size: 10, color: "#475569" }
+        labelfont: { size: 10, color: "#353a41" }
       } : void 0,
       hovertemplate: "Size: %{x}<br>Clusters: %{y}<br>Power: %{z:.3f}<extra></extra>",
       colorbar: {
-        title: { text: "Power", font: { size: 11 } },
-        tickfont: { size: 10 }
+        title: { text: "Power", font: { size: 11, color: "#4b5159" } },
+        tickfont: { size: 10, color: "#4b5159" },
+        outlinewidth: 0
       }
     };
   }, [
@@ -1665,37 +1805,43 @@ const PlotArea = ({
           x1: currentXConfig.max,
           y0: targetPower,
           y1: targetPower,
-          line: { color: "#94a3b8", width: 1.5, dash: "dash" }
+          line: { color: "#868d96", width: 1.25, dash: "dot" }
         }
       ] : [];
       data = plotData;
       layout = {
-        margin: { l: 55, r: 25, t: 25, b: 50 },
+        margin: { l: 55, r: 20, t: 36, b: 46 },
         xaxis: {
-          title: { text: currentXConfig.label, font: { size: 12 } },
-          gridcolor: "#e2e8f0",
-          tickfont: { size: 10 }
+          title: { text: currentXConfig.label, font: { size: 12, color: "#4b5159" } },
+          gridcolor: "#e7eaee",
+          linecolor: "#c4c9cf",
+          zeroline: false,
+          tickfont: { size: 10, color: "#636a73" }
         },
         yaxis: {
           title: {
-            text: yAxis === "power" ? "Power" : "Min. Detectable Effect",
-            font: { size: 12 }
+            text: yAxis === "power" ? "Power" : "Min. detectable effect",
+            font: { size: 12, color: "#4b5159" }
           },
-          gridcolor: "#e2e8f0",
+          gridcolor: "#e7eaee",
+          linecolor: "#c4c9cf",
+          zeroline: false,
           range: yAxis === "power" ? [0, 1.02] : void 0,
-          tickfont: { size: 10 }
+          tickfont: { size: 10, color: "#636a73" }
         },
         shapes,
         legend: {
           orientation: "h",
-          y: -0.2,
-          x: 0.5,
-          xanchor: "center",
-          font: { size: 11 }
+          y: 1.02,
+          yanchor: "bottom",
+          x: 0,
+          xanchor: "left",
+          font: { size: 12, color: "#353a41" }
         },
         paper_bgcolor: "white",
-        plot_bgcolor: "#f8fafc",
-        font: { family: "system-ui, -apple-system, sans-serif" },
+        plot_bgcolor: "white",
+        font: { family: '"Source Sans 3", system-ui, sans-serif', color: "#353a41" },
+        hoverlabel: { bgcolor: "#22262b", bordercolor: "#22262b", font: { color: "#eef0f2", size: 12 } },
         hovermode: "x unified"
       };
     } else {
@@ -1703,29 +1849,30 @@ const PlotArea = ({
       layout = {
         margin: { l: 55, r: 80, t: 25, b: 50 },
         xaxis: {
-          title: { text: "Cluster-Period Size", font: { size: 12 } },
-          tickfont: { size: 10 }
+          title: { text: "Cluster-period size", font: { size: 12, color: "#4b5159" } },
+          tickfont: { size: 10, color: "#636a73" }
         },
         yaxis: {
-          title: { text: "Total Clusters", font: { size: 12 } },
-          tickfont: { size: 10 }
+          title: { text: "Total clusters", font: { size: 12, color: "#4b5159" } },
+          tickfont: { size: 10, color: "#636a73" }
         },
         paper_bgcolor: "white",
-        font: { family: "system-ui, -apple-system, sans-serif" },
+        font: { family: '"Source Sans 3", system-ui, sans-serif', color: "#353a41" },
+        hoverlabel: { bgcolor: "#22262b", bordercolor: "#22262b", font: { color: "#eef0f2", size: 12 } },
         annotations: plotType === "contour" ? [
           {
             x: surfaceData.x[Math.floor(surfaceData.x.length * 0.7)],
             y: surfaceData.y[Math.floor(surfaceData.y.length * 0.3)],
             text: `${(targetPower * 100).toFixed(0)}% power`,
             showarrow: false,
-            font: { size: 10, color: "#475569" }
+            font: { size: 10, color: "#353a41" }
           }
         ] : []
       };
     }
     const config = {
       responsive: true,
-      displayModeBar: true,
+      displayModeBar: "hover",
       modeBarButtonsToRemove: ["lasso2d", "select2d", "autoScale2d"],
       toImageButtonOptions: {
         format: "png",
@@ -1752,6 +1899,15 @@ const PlotArea = ({
     targetPower,
     cacheVersion
   ]);
+  useEffect(() => {
+    if (!plotlyLoaded || !plotRef.current || !window.ResizeObserver) return;
+    const el = plotRef.current;
+    const ro = new ResizeObserver(() => {
+      if (window.Plotly && el.data) window.Plotly.Plots.resize(el);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [plotlyLoaded]);
   const exportPlot = (format) => {
     if (!plotRef.current || !window.Plotly) return;
     window.Plotly.downloadImage(plotRef.current, {
@@ -1762,17 +1918,35 @@ const PlotArea = ({
       scale: 2
     });
   };
-  return /* @__PURE__ */ React.createElement("div", { className: "bg-white rounded-xl shadow-lg border border-slate-200 p-4" }, /* @__PURE__ */ React.createElement("div", { className: "flex items-center justify-between mb-3 flex-wrap gap-2" }, /* @__PURE__ */ React.createElement("h2", { className: "text-sm font-semibold text-slate-700" }, "Analysis Plot"), /* @__PURE__ */ React.createElement("div", { className: "flex gap-2 flex-wrap" }, /* @__PURE__ */ React.createElement(
+  return /* @__PURE__ */ React.createElement("section", { className: "panel flex-1 flex flex-col" }, /* @__PURE__ */ React.createElement("div", { className: "panel-head" }, /* @__PURE__ */ React.createElement("h2", { className: "panel-title" }, "Analysis plot"), /* @__PURE__ */ React.createElement("div", { className: "flex gap-1.5" }, /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      onClick: () => exportPlot("png"),
+      className: "btn btn-secondary btn-sm",
+      title: "Download as PNG"
+    },
+    /* @__PURE__ */ React.createElement(Icon, { name: "download", className: "w-3.5 h-3.5" }),
+    "PNG"
+  ), /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      onClick: () => exportPlot("svg"),
+      className: "btn btn-secondary btn-sm",
+      title: "Download as SVG"
+    },
+    /* @__PURE__ */ React.createElement(Icon, { name: "download", className: "w-3.5 h-3.5" }),
+    "SVG"
+  ))), /* @__PURE__ */ React.createElement("div", { className: "flex flex-wrap items-end gap-x-2.5 gap-y-2.5 px-4 pt-3" }, /* @__PURE__ */ React.createElement("label", { className: "flex flex-col gap-1" }, /* @__PURE__ */ React.createElement("span", { className: "field-label" }, "Plot"), /* @__PURE__ */ React.createElement(
     "select",
     {
       value: plotType,
       onChange: (e) => setPlotType(e.target.value),
-      className: "px-2 py-1 text-xs border border-slate-300 rounded\r\n                 focus:outline-none focus:ring-1 focus:ring-blue-500"
+      className: "field field-sm w-28"
     },
-    /* @__PURE__ */ React.createElement("option", { value: "line" }, "Line Plot"),
-    /* @__PURE__ */ React.createElement("option", { value: "heatmap" }, "Power Surface (Heatmap)"),
-    /* @__PURE__ */ React.createElement("option", { value: "contour" }, "Power Surface (Contour)")
-  ), /* @__PURE__ */ React.createElement("div", { className: "flex items-center gap-1" }, /* @__PURE__ */ React.createElement("label", { className: "text-xs text-slate-500" }, "Target:"), /* @__PURE__ */ React.createElement(
+    /* @__PURE__ */ React.createElement("option", { value: "line" }, "Line"),
+    /* @__PURE__ */ React.createElement("option", { value: "heatmap" }, "Heatmap"),
+    /* @__PURE__ */ React.createElement("option", { value: "contour" }, "Contour")
+  )), /* @__PURE__ */ React.createElement("label", { className: "flex flex-col gap-1" }, /* @__PURE__ */ React.createElement("span", { className: "field-label", title: "Target power" }, "Target"), /* @__PURE__ */ React.createElement(
     "input",
     {
       type: "number",
@@ -1781,25 +1955,23 @@ const PlotArea = ({
       max: "0.99",
       value: targetPower,
       onChange: (e) => setTargetPower(
-        Math.min(
-          0.99,
-          Math.max(0.5, parseFloat(e.target.value) || 0.8)
-        )
+        Math.min(0.99, Math.max(0.5, parseFloat(e.target.value) || 0.8))
       ),
-      className: "w-14 px-1 py-1 text-xs border border-slate-300 rounded\r\n               focus:outline-none focus:ring-1 focus:ring-blue-500 text-center"
+      className: "field field-sm w-12 text-center"
     }
-  )), plotType === "line" && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(
+  )), plotType === "line" && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("label", { className: "flex flex-col gap-1" }, /* @__PURE__ */ React.createElement("span", { className: "field-label" }, "X axis"), /* @__PURE__ */ React.createElement(
     "select",
     {
       value: xAxis,
       onChange: (e) => setXAxis(e.target.value),
-      className: "px-2 py-1 text-xs border border-slate-300 rounded\r\n           focus:outline-none focus:ring-1 focus:ring-blue-500"
+      className: "field field-sm w-[7.5rem]"
     },
-    xAxisOptions.map((opt) => /* @__PURE__ */ React.createElement("option", { key: opt.value, value: opt.value }, "X: ", opt.label))
-  ), /* @__PURE__ */ React.createElement("div", { className: "flex items-center gap-1" }, /* @__PURE__ */ React.createElement("label", { className: "text-xs text-slate-500" }, "Range:"), /* @__PURE__ */ React.createElement(
+    xAxisOptions.map((opt) => /* @__PURE__ */ React.createElement("option", { key: opt.value, value: opt.value }, opt.label))
+  )), /* @__PURE__ */ React.createElement("div", { className: "flex flex-col gap-1" }, /* @__PURE__ */ React.createElement("span", { className: "field-label" }, "Range"), /* @__PURE__ */ React.createElement("div", { className: "flex items-center gap-1" }, /* @__PURE__ */ React.createElement(
     "input",
     {
       type: "number",
+      "aria-label": "Range minimum",
       value: (_b = (_a = customRange == null ? void 0 : customRange.min) != null ? _a : currentXConfig == null ? void 0 : currentXConfig.min) != null ? _b : 0,
       onChange: (e) => setCustomRange((r) => {
         var _a2, _b2;
@@ -1808,12 +1980,13 @@ const PlotArea = ({
           max: (_b2 = (_a2 = r == null ? void 0 : r.max) != null ? _a2 : currentXConfig == null ? void 0 : currentXConfig.max) != null ? _b2 : 1
         };
       }),
-      className: "w-14 px-1 py-1 text-xs border border-slate-300 rounded\r\n         focus:outline-none focus:ring-1 focus:ring-blue-500 text-center"
+      className: "field field-sm w-12 text-center"
     }
-  ), /* @__PURE__ */ React.createElement("span", { className: "text-xs text-slate-400" }, "to"), /* @__PURE__ */ React.createElement(
+  ), /* @__PURE__ */ React.createElement("span", { className: "text-xs text-ink-500" }, "\u2013"), /* @__PURE__ */ React.createElement(
     "input",
     {
       type: "number",
+      "aria-label": "Range maximum",
       value: (_d = (_c = customRange == null ? void 0 : customRange.max) != null ? _c : currentXConfig == null ? void 0 : currentXConfig.max) != null ? _d : 1,
       onChange: (e) => setCustomRange((r) => {
         var _a2, _b2;
@@ -1822,17 +1995,17 @@ const PlotArea = ({
           max: parseFloat(e.target.value)
         };
       }),
-      className: "w-14 px-1 py-1 text-xs border border-slate-300 rounded\r\n         focus:outline-none focus:ring-1 focus:ring-blue-500 text-center"
+      className: "field field-sm w-12 text-center"
     }
-  )), /* @__PURE__ */ React.createElement(
+  ))), /* @__PURE__ */ React.createElement("label", { className: "flex flex-col gap-1" }, /* @__PURE__ */ React.createElement("span", { className: "field-label" }, "Y axis"), /* @__PURE__ */ React.createElement(
     "select",
     {
       value: yAxis,
       onChange: (e) => setYAxis(e.target.value),
-      className: "px-2 py-1 text-xs border border-slate-300 rounded\r\n           focus:outline-none focus:ring-1 focus:ring-blue-500"
+      className: "field field-sm w-[7.5rem]"
     },
-    yAxisOptions.map((opt) => /* @__PURE__ */ React.createElement("option", { key: opt.value, value: opt.value }, "Y: ", opt.label))
-  )), plotType !== "line" && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("span", { className: "text-xs text-slate-500 self-center" }, "Using ", designs[activeIndex].name), /* @__PURE__ */ React.createElement("div", { className: "flex items-center gap-1" }, /* @__PURE__ */ React.createElement("label", { className: "text-xs text-slate-500" }, "Resolution:"), /* @__PURE__ */ React.createElement(
+    yAxisOptions.map((opt) => /* @__PURE__ */ React.createElement("option", { key: opt.value, value: opt.value }, opt.label))
+  ))), plotType !== "line" && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("label", { className: "flex flex-col gap-1" }, /* @__PURE__ */ React.createElement("span", { className: "field-label" }, "Resolution"), /* @__PURE__ */ React.createElement(
     "input",
     {
       type: "number",
@@ -1842,31 +2015,16 @@ const PlotArea = ({
       onChange: (e) => setSurfaceResolution(
         Math.min(30, Math.max(5, parseInt(e.target.value) || 15))
       ),
-      className: "w-12 px-1 py-1 text-xs border border-slate-300 rounded\r\n                   focus:outline-none focus:ring-1 focus:ring-blue-500 text-center"
+      className: "field field-sm w-14 text-center"
     }
-  ))), /* @__PURE__ */ React.createElement("div", { className: "flex gap-1" }, /* @__PURE__ */ React.createElement(
-    "button",
-    {
-      onClick: () => exportPlot("png"),
-      className: "px-2 py-1 text-xs bg-slate-100 border border-slate-300 rounded\r\n                   hover:bg-slate-200 transition-colors",
-      title: "Download as PNG"
-    },
-    "PNG"
-  ), /* @__PURE__ */ React.createElement(
-    "button",
-    {
-      onClick: () => exportPlot("svg"),
-      className: "px-2 py-1 text-xs bg-slate-100 border border-slate-300 rounded\r\n                   hover:bg-slate-200 transition-colors",
-      title: "Download as SVG"
-    },
-    "SVG"
-  )))), /* @__PURE__ */ React.createElement("div", { className: `relative ${isStale ? "opacity-60" : ""}` }, isStale && /* @__PURE__ */ React.createElement("div", { className: "absolute inset-0 flex items-center justify-center z-10 pointer-events-none" }, /* @__PURE__ */ React.createElement("span", { className: "bg-amber-100 text-amber-700 text-xs px-2 py-1 rounded-full" }, "Outdated")), !plotlyLoaded ? /* @__PURE__ */ React.createElement("div", { className: "h-64 flex items-center justify-center text-slate-400" }, "Loading plot library...") : /* @__PURE__ */ React.createElement("div", { ref: plotRef, style: { width: "100%", height: "280px" } })));
+  )), /* @__PURE__ */ React.createElement("span", { className: "text-xs text-ink-500 pb-1.5" }, "Showing ", designs[activeIndex].name))), /* @__PURE__ */ React.createElement("div", { className: "relative flex-1 min-h-[280px] mx-2 mb-2 mt-1" }, isStale && /* @__PURE__ */ React.createElement("div", { className: "absolute inset-0 flex items-center justify-center z-10 pointer-events-none" }, /* @__PURE__ */ React.createElement("span", { className: "bg-white border border-amber-200 text-amber-800 text-xs font-medium px-2.5 py-1 rounded-md shadow-card" }, "Out of date")), /* @__PURE__ */ React.createElement("div", { className: `absolute inset-0 transition-opacity ${isStale ? "opacity-40" : ""}` }, !plotlyLoaded ? /* @__PURE__ */ React.createElement("div", { className: "h-full flex items-center justify-center text-sm text-ink-500" }, "Loading plot library\u2026") : /* @__PURE__ */ React.createElement("div", { ref: plotRef, className: "w-full h-full" }))));
 };
 function App() {
   var _a;
   const [designs, setDesigns] = useState(() => [createDesignEntry("Design 1")]);
   const [activeIndex, setActiveIndex] = useState(0);
   const [contextMenu, setContextMenu] = useState(null);
+  const [cellEditor, setCellEditor] = useState(null);
   const [cellSize, setCellSize] = useState(72);
   const [weightMode, setWeightMode] = useState("none");
   const [rowWeights, setRowWeights] = useState(null);
@@ -1898,8 +2056,8 @@ function App() {
         { key: "kenward_roger", label: "GLMM (Conditional), Kenward-Roger" },
         { key: "gee_exchangeable", label: "GEE (Marginal; Robust)" },
         { key: "gee_exchangeable_ttest", label: "GEE (Marginal; Robust), t-test" },
-        { key: "design_effect", label: "Design Effect" },
-        { key: "design_effect_ttest", label: "Design Effect, t-test" }
+        { key: "design_effect", label: "Design effect" },
+        { key: "design_effect_ttest", label: "Design effect, t-test" }
       ];
     }
     return [
@@ -2105,26 +2263,17 @@ function App() {
       const cell = design2.getCell(rowIndex, colIndex);
       if (cell.status === CellStatus.NOT_ENROLLED) return;
       e.preventDefault();
-      const newSize = prompt(
-        "Enter cluster-period size:",
-        cell.sampleSize || options2.meanClusterSize
-      );
-      if (newSize !== null) {
-        const parsed = parseInt(newSize);
-        if (!isNaN(parsed) && parsed > 0) {
-          updateActiveDesign((entry) => {
-            entry.design.getCell(rowIndex, colIndex).sampleSize = parsed;
-          });
-        }
-      }
+      setCellEditor({
+        x: e.clientX,
+        y: e.clientY,
+        rowIndex,
+        colIndex,
+        initial: cell.sampleSize || options2.meanClusterSize
+      });
     },
-    [
-      options2.sampleSizeMode,
-      options2.meanClusterSize,
-      design2,
-      updateActiveDesign
-    ]
+    [options2.sampleSizeMode, options2.meanClusterSize, design2]
   );
+  const closeCellEditor = useCallback(() => setCellEditor(null), []);
   const handlePeriodContextMenu = useCallback(
     (e, index) => {
       setContextMenu({
@@ -2143,13 +2292,13 @@ function App() {
           },
           { separator: true },
           {
-            label: "Set all to Control",
+            label: "Set all to control",
             action: () => updateActiveDesign(
               (entry) => entry.design.setAllInPeriod(index, CellStatus.CONTROL)
             )
           },
           {
-            label: "Set all to Intervention",
+            label: "Set all to intervention",
             action: () => updateActiveDesign(
               (entry) => entry.design.setAllInPeriod(index, CellStatus.INTERVENTION)
             )
@@ -2184,13 +2333,13 @@ function App() {
           },
           { separator: true },
           {
-            label: "Set all to Control",
+            label: "Set all to control",
             action: () => updateActiveDesign(
               (entry) => entry.design.setAllInSequence(index, CellStatus.CONTROL)
             )
           },
           {
-            label: "Set all to Intervention",
+            label: "Set all to intervention",
             action: () => updateActiveDesign(
               (entry) => entry.design.setAllInSequence(index, CellStatus.INTERVENTION)
             )
@@ -2268,19 +2417,19 @@ function App() {
     switch (outcomeType) {
       case "binary":
         return {
-          label: "Risk Difference",
+          label: "Risk difference",
           tooltip: "Absolute risk difference (e.g., 0.1 means 10 percentage point increase from baseline probability)",
           placeholder: "e.g., 0.1"
         };
       case "count":
         return {
-          label: "Rate Ratio",
+          label: "Rate ratio",
           tooltip: "Ratio of treatment to control rate (e.g., 1.3 means 30% higher rate)",
           placeholder: "e.g., 1.3"
         };
       default:
         return {
-          label: "Mean Difference",
+          label: "Mean difference",
           tooltip: "Difference in means between treatment and control groups",
           placeholder: "e.g., 0.5"
         };
@@ -2291,79 +2440,199 @@ function App() {
   const numPeriods = design2.numPeriods;
   const [showTooltip, setShowTooltip] = useState(false);
   const [showCorrTooltip, setShowCorrTooltip] = useState(false);
+  const [showReplTooltip, setShowReplTooltip] = useState(false);
   const teInfo = getTreatmentEffectInfo(options2.outcomeType);
-  return /* @__PURE__ */ React.createElement("div", { className: "min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-4 md:p-6" }, /* @__PURE__ */ React.createElement("div", { className: "max-w-7xl mx-auto" }, /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-1 lg:grid-cols-2 gap-4" }, /* @__PURE__ */ React.createElement("div", { className: "space-y-4" }, /* @__PURE__ */ React.createElement("div", { className: "mb-4" }, /* @__PURE__ */ React.createElement("h1", { className: "text-2xl font-bold text-slate-800 tracking-tight" }, "Cluster Trial Design Tool"), /* @__PURE__ */ React.createElement("p", { className: "text-slate-500 mt-1 text-sm" }, "Compare up to 3 designs. Click cells to cycle status. Right-click headers for options.")), /* @__PURE__ */ React.createElement("div", { className: "flex items-center gap-2" }, designs.map((d, i) => /* @__PURE__ */ React.createElement(
+  const exportSession = () => {
+    const exportData = designs.map((d) => ({
+      name: d.name,
+      design: d.design.toJSON(),
+      options: d.options,
+      results: MathsInterface.calculateResults(d.design, d.options)
+    }));
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], {
+      type: "application/json"
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "trial-designs.json";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+  const importSession = (e) => {
+    var _a2;
+    const file = (_a2 = e.target.files) == null ? void 0 : _a2[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const importedData = JSON.parse(event.target.result);
+        const newDesigns = importedData.map((item, idx) => ({
+          name: item.name || `Design ${idx + 1}`,
+          design: TrialDesign.fromJSON(item.design),
+          options: { ...createDefaultOptions(), ...item.options }
+        }));
+        if (newDesigns.length > 0) {
+          setDesigns(newDesigns);
+          setActiveIndex(0);
+          setResultsStale(true);
+        }
+      } catch (err) {
+        console.error("Import failed:", err);
+        alert("Failed to import file: " + err.message);
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  };
+  const exportBundle = async () => {
+    try {
+      setIsExporting(true);
+      await window.ReportGenerator.generateBundle(
+        design2,
+        options2,
+        activeDesign.name
+      );
+    } catch (err) {
+      console.error("Export failed:", err);
+      alert("Export failed: " + err.message);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+  const infoTip = (text, show, setShow, wide = false) => /* @__PURE__ */ React.createElement("span", { className: "relative inline-flex" }, /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      type: "button",
+      className: "text-ink-400 hover:text-ink-700 focus:text-ink-700 cursor-help",
+      onMouseEnter: () => setShow(true),
+      onMouseLeave: () => setShow(false),
+      onFocus: () => setShow(true),
+      onBlur: () => setShow(false),
+      "aria-label": text
+    },
+    /* @__PURE__ */ React.createElement(Icon, { name: "info", className: "w-3.5 h-3.5" })
+  ), show && /* @__PURE__ */ React.createElement(
+    "span",
+    {
+      role: "tooltip",
+      className: `absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-2 px-2.5 py-1.5
+                      text-xs font-normal leading-snug text-ink-50 bg-ink-800 rounded-md shadow-pop
+                      ${wide ? "w-64 whitespace-normal" : "whitespace-nowrap"}`
+    },
+    text
+  ));
+  const totalClusters = design2.getTotalClusters();
+  return /* @__PURE__ */ React.createElement("div", { className: "min-h-screen bg-paper" }, /* @__PURE__ */ React.createElement("div", { className: "max-w-7xl mx-auto px-4 md:px-6 pt-7 pb-12" }, /* @__PURE__ */ React.createElement("header", { className: "flex flex-wrap items-end justify-between gap-x-6 gap-y-3" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("h1", { className: "font-display text-[1.75rem] leading-tight font-semibold tracking-[-0.012em] text-ink-900" }, "Cluster trial design tool"), /* @__PURE__ */ React.createElement("p", { className: "mt-1 text-sm text-ink-600" }, "Compare up to 3 designs. Click cells to cycle status. Right-click headers for options.")), /* @__PURE__ */ React.createElement("div", { className: "flex gap-2" }, /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      onClick: () => document.getElementById("import-file").click(),
+      className: "btn btn-secondary",
+      title: "Import a previously saved session (JSON)"
+    },
+    /* @__PURE__ */ React.createElement(Icon, { name: "upload", className: "w-3.5 h-3.5" }),
+    "Import session"
+  ), /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      onClick: exportSession,
+      className: "btn btn-secondary",
+      title: "Export your designs to a JSON file"
+    },
+    /* @__PURE__ */ React.createElement(Icon, { name: "download", className: "w-3.5 h-3.5" }),
+    "Export session"
+  ), /* @__PURE__ */ React.createElement(
+    "input",
+    {
+      id: "import-file",
+      type: "file",
+      accept: ".json",
+      className: "hidden",
+      onChange: importSession
+    }
+  ))), /* @__PURE__ */ React.createElement(
     "div",
     {
-      key: i,
-      className: `flex items-center gap-2 px-3 py-1.5 rounded-lg cursor-pointer transition-colors
-                    ${i === activeIndex ? `${designColors[i].light} ${designColors[i].border} border-2` : "bg-white border border-slate-200 hover:bg-slate-50"}`,
-      onClick: () => setActiveIndex(i)
+      className: "mt-6 mb-5 flex flex-wrap items-end gap-1 border-b border-ink-200",
+      role: "tablist"
     },
-    /* @__PURE__ */ React.createElement(
-      "input",
+    designs.map((d, i) => /* @__PURE__ */ React.createElement(
+      "div",
       {
-        type: "text",
-        value: d.name,
-        onChange: (e) => renameDesign(i, e.target.value),
-        onClick: (e) => e.stopPropagation(),
-        className: `bg-transparent text-sm font-medium w-20 focus:outline-none
-                      ${i === activeIndex ? designColors[i].text : "text-slate-600"}`
-      }
-    ),
-    designs.length > 1 && /* @__PURE__ */ React.createElement(
+        key: i,
+        role: "tab",
+        "aria-selected": i === activeIndex,
+        className: `group relative -mb-px flex items-center gap-2 pl-3 pr-2 h-10 rounded-t-md border border-b-0 cursor-pointer transition-colors
+                ${i === activeIndex ? "bg-white border-ink-200" : "border-transparent hover:bg-ink-100"}`,
+        onClick: () => setActiveIndex(i)
+      },
+      i === activeIndex && /* @__PURE__ */ React.createElement(
+        "span",
+        {
+          className: `absolute left-0 right-0 top-0 h-0.5 rounded-t-md ${designColors[i].bg}`
+        }
+      ),
+      /* @__PURE__ */ React.createElement("span", { className: `w-2 h-2 rounded-full ${designColors[i].bg}` }),
+      /* @__PURE__ */ React.createElement(
+        "input",
+        {
+          type: "text",
+          value: d.name,
+          onChange: (e) => renameDesign(i, e.target.value),
+          onClick: (e) => {
+            e.stopPropagation();
+            setActiveIndex(i);
+          },
+          onFocus: () => setActiveIndex(i),
+          "aria-label": "Design name",
+          className: `bg-transparent text-sm w-24 rounded px-0.5 focus:outline-none focus:bg-ink-50
+                  ${i === activeIndex ? "font-semibold text-ink-900" : "font-medium text-ink-600"}`
+        }
+      ),
+      designs.length > 1 && /* @__PURE__ */ React.createElement(
+        "button",
+        {
+          onClick: (e) => {
+            e.stopPropagation();
+            removeDesign(i);
+          },
+          className: "w-5 h-5 flex items-center justify-center rounded text-ink-400 hover:text-red-600 hover:bg-red-50",
+          title: "Remove design",
+          "aria-label": `Remove ${d.name}`
+        },
+        /* @__PURE__ */ React.createElement(Icon, { name: "close", className: "w-3 h-3" })
+      )
+    )),
+    designs.length < 3 && /* @__PURE__ */ React.createElement("div", { className: "relative mb-1.5 ml-1", ref: addMenuRef }, /* @__PURE__ */ React.createElement(
       "button",
       {
-        onClick: (e) => {
-          e.stopPropagation();
-          removeDesign(i);
-        },
-        className: "text-slate-400 hover:text-red-500 text-xs",
-        title: "Remove design"
+        onClick: () => setAddMenuOpen((prev) => !prev),
+        className: "btn btn-sm border-transparent text-ink-600 hover:text-ink-900 hover:bg-ink-100",
+        "aria-expanded": addMenuOpen
       },
-      "\xD7"
-    )
-  )), designs.length < 3 && /* @__PURE__ */ React.createElement("div", { className: "relative", ref: addMenuRef }, /* @__PURE__ */ React.createElement(
-    "button",
-    {
-      onClick: () => setAddMenuOpen((prev) => !prev),
-      className: "px-3 py-1.5 bg-white border border-dashed border-slate-300 rounded-lg\r\n                 text-sm text-slate-500 hover:bg-slate-50 hover:border-slate-400 transition-colors"
-    },
-    "+ Add Design"
-  ), addMenuOpen && /* @__PURE__ */ React.createElement("div", { className: "absolute top-full left-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-lg z-50 py-1 min-w-[160px]" }, /* @__PURE__ */ React.createElement(
-    "button",
-    {
-      onClick: addNewDesign,
-      className: "w-full text-left px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
-    },
-    "New blank design"
-  ), /* @__PURE__ */ React.createElement("div", { className: "border-t border-slate-100 my-0.5" }), designs.map((d, i) => /* @__PURE__ */ React.createElement(
-    "button",
-    {
-      key: i,
-      onClick: () => duplicateDesign(i),
-      className: "w-full text-left px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
-    },
-    'Duplicate "',
-    d.name,
-    '"'
-  ))))), /* @__PURE__ */ React.createElement("div", { className: "flex flex-wrap items-center gap-2" }, /* @__PURE__ */ React.createElement("span", { className: "text-sm font-medium text-slate-600" }, "Presets:"), [
-    "parallel",
-    "parallel-baseline",
-    "stepped-wedge",
-    "stepped-wedge-implementation",
-    "crossover",
-    "crossover-washout",
-    "staircase"
-  ].map((preset) => /* @__PURE__ */ React.createElement(
-    "button",
-    {
-      key: preset,
-      onClick: () => loadPreset(preset),
-      className: "px-2 py-1 bg-white border border-slate-300 rounded text-xs\r\n               hover:bg-slate-50 transition-colors capitalize"
-    },
-    preset.replace(/-/g, " ")
-  )), /* @__PURE__ */ React.createElement("div", { className: "h-4 w-px bg-slate-300 mx-1" }), /* @__PURE__ */ React.createElement("label", { className: "flex items-center gap-1 text-xs text-slate-600" }, "Size:", /* @__PURE__ */ React.createElement(
+      /* @__PURE__ */ React.createElement(Icon, { name: "plus", className: "w-3.5 h-3.5" }),
+      "Add design"
+    ), addMenuOpen && /* @__PURE__ */ React.createElement("div", { className: "absolute top-full left-0 mt-1 bg-white border border-ink-200 rounded-md shadow-pop z-50 py-1 min-w-[180px]" }, /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        onClick: addNewDesign,
+        className: "w-full text-left px-3 py-1.5 text-sm text-ink-800 hover:bg-ink-50 transition-colors"
+      },
+      "New blank design"
+    ), /* @__PURE__ */ React.createElement("div", { className: "border-t border-ink-100 my-1" }), designs.map((d, i) => /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        key: i,
+        onClick: () => duplicateDesign(i),
+        className: "w-full text-left px-3 py-1.5 text-sm text-ink-800 hover:bg-ink-50 transition-colors"
+      },
+      "Duplicate \u201C",
+      d.name,
+      "\u201D"
+    ))))
+  ), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-1 lg:grid-cols-2 xl:grid-rows-[1fr_auto] gap-5" }, /* @__PURE__ */ React.createElement("section", { className: "panel flex flex-col min-w-0 lg:col-start-1 lg:row-start-1" }, /* @__PURE__ */ React.createElement("div", { className: "panel-head" }, /* @__PURE__ */ React.createElement("h2", { className: "panel-title" }, "Design grid"), /* @__PURE__ */ React.createElement("div", { className: "flex flex-wrap items-center gap-1.5" }, /* @__PURE__ */ React.createElement("label", { className: "flex items-center gap-2 mr-1.5 text-xs font-medium text-ink-600" }, "Cell size", /* @__PURE__ */ React.createElement(
     "input",
     {
       type: "range",
@@ -2371,167 +2640,164 @@ function App() {
       max: "96",
       value: cellSize,
       onChange: (e) => setCellSize(Number(e.target.value)),
-      className: "w-16"
+      className: "w-20"
     }
-  ), /* @__PURE__ */ React.createElement("div", { className: "flex gap-1" }, /* @__PURE__ */ React.createElement(
+  )), /* @__PURE__ */ React.createElement(
     "button",
     {
       onClick: () => setWeightMode(weightMode === "cell" ? "none" : "cell"),
-      className: `px-2 py-1 text-xs border rounded transition-colors
-      ${weightMode === "cell" ? `bg-blue-100 border-blue-400 text-blue-700 ${resultsStale ? "opacity-60" : ""}` : "bg-white border-slate-300 text-slate-600 hover:bg-slate-50"}`
+      "aria-pressed": weightMode === "cell",
+      className: `btn btn-sm btn-toggle ${weightMode === "cell" && resultsStale ? "opacity-60" : ""}`,
+      title: "Scale cells by their optimal allocation weight"
     },
-    weightMode === "cell" ? "\u2713 Cell Weights" : "Cell Weights",
+    weightMode === "cell" && /* @__PURE__ */ React.createElement(Icon, { name: "check", className: "w-3 h-3" }),
+    "Cell weights",
     weightMode === "cell" && resultsStale && " *"
   ), /* @__PURE__ */ React.createElement(
     "button",
     {
       onClick: () => setWeightMode(weightMode === "row" ? "none" : "row"),
-      className: `px-2 py-1 text-xs border rounded transition-colors
-      ${weightMode === "row" ? `bg-blue-100 border-blue-400 text-blue-700 ${resultsStale ? "opacity-60" : ""}` : "bg-white border-slate-300 text-slate-600 hover:bg-slate-50"}`
+      "aria-pressed": weightMode === "row",
+      className: `btn btn-sm btn-toggle ${weightMode === "row" && resultsStale ? "opacity-60" : ""}`,
+      title: "Scale sequences by their optimal allocation weight"
     },
-    weightMode === "row" ? "\u2713 Row Weights" : "Row Weights",
+    weightMode === "row" && /* @__PURE__ */ React.createElement(Icon, { name: "check", className: "w-3 h-3" }),
+    "Row weights",
     weightMode === "row" && resultsStale && " *"
-  )), /* @__PURE__ */ React.createElement("div", { className: "h-4 w-px bg-slate-300 mx-1" }), /* @__PURE__ */ React.createElement(
+  ), /* @__PURE__ */ React.createElement(
     "button",
     {
       onClick: exportDesignImage,
-      className: "px-2 py-1 text-xs bg-white border border-slate-300 rounded\r\n             hover:bg-slate-50 transition-colors",
+      className: "btn btn-sm btn-secondary",
       title: "Export design as PNG"
     },
-    "\u{1F4E5} Export Design"
-  ))), /* @__PURE__ */ React.createElement(
+    /* @__PURE__ */ React.createElement(Icon, { name: "image", className: "w-3.5 h-3.5" }),
+    "PNG"
+  ))), /* @__PURE__ */ React.createElement("div", { className: "flex flex-wrap items-center gap-1.5 px-4 py-3 border-b border-ink-100" }, /* @__PURE__ */ React.createElement("span", { className: "text-xs font-medium text-ink-600 mr-1" }, "Presets"), [
+    ["parallel", "Parallel"],
+    ["parallel-baseline", "Parallel with baseline"],
+    ["stepped-wedge", "Stepped wedge"],
+    ["stepped-wedge-implementation", "Stepped wedge with implementation"],
+    ["crossover", "Cross-over"],
+    ["crossover-washout", "Cross-over with washout"],
+    ["staircase", "Staircase"]
+  ].map(([preset, label]) => /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      key: preset,
+      onClick: () => loadPreset(preset),
+      className: "chip"
+    },
+    label
+  ))), /* @__PURE__ */ React.createElement("div", { className: "canvas flex-1 flex items-center overflow-x-auto min-h-[220px]" }, /* @__PURE__ */ React.createElement("div", { ref: designGridRef, className: "inline-block p-5 mx-auto" }, /* @__PURE__ */ React.createElement("div", { className: "flex items-center mb-1 group" }, /* @__PURE__ */ React.createElement("div", { style: { width: SEQ_HEADER_W } }), /* @__PURE__ */ React.createElement("div", { className: "flex items-center" }, /* @__PURE__ */ React.createElement("div", { className: "w-2 flex justify-center" }, /* @__PURE__ */ React.createElement(
+    InsertButton,
+    {
+      onClick: () => updateActiveDesign((e) => e.design.insertPeriod(0))
+    }
+  )), Array(numPeriods).fill(null).map((_, j) => /* @__PURE__ */ React.createElement(React.Fragment, { key: j }, /* @__PURE__ */ React.createElement(
+    PeriodHeader,
+    {
+      index: j,
+      onContextMenu: handlePeriodContextMenu,
+      cellSize
+    }
+  ), /* @__PURE__ */ React.createElement("div", { className: "w-2 flex justify-center" }, /* @__PURE__ */ React.createElement(
+    InsertButton,
+    {
+      onClick: () => updateActiveDesign(
+        (e) => e.design.insertPeriod(j + 1)
+      )
+    }
+  )))))), /* @__PURE__ */ React.createElement("div", { className: "flex flex-col" }, /* @__PURE__ */ React.createElement("div", { className: "flex items-center h-2 group" }, /* @__PURE__ */ React.createElement(
     "div",
     {
-      ref: designGridRef,
-      className: "bg-white rounded-xl shadow-lg border border-slate-200 p-4 overflow-x-auto"
+      style: { width: SEQ_HEADER_W },
+      className: "flex justify-end pr-1"
     },
-    " ",
-    /* @__PURE__ */ React.createElement("div", { className: "inline-block" }, /* @__PURE__ */ React.createElement("div", { className: "flex items-center mb-1 group" }, /* @__PURE__ */ React.createElement("div", { style: { width: 100 } }), /* @__PURE__ */ React.createElement("div", { className: "flex items-center" }, /* @__PURE__ */ React.createElement("div", { className: "w-2 flex justify-center" }, /* @__PURE__ */ React.createElement(
+    /* @__PURE__ */ React.createElement(
       InsertButton,
       {
-        onClick: () => updateActiveDesign((e) => e.design.insertPeriod(0))
+        onClick: () => updateActiveDesign((e) => e.design.insertSequence(0))
       }
-    )), Array(numPeriods).fill(null).map((_, j) => /* @__PURE__ */ React.createElement(React.Fragment, { key: j }, /* @__PURE__ */ React.createElement(
-      PeriodHeader,
+    )
+  )), grid.map((row, i) => /* @__PURE__ */ React.createElement(React.Fragment, { key: i }, /* @__PURE__ */ React.createElement("div", { className: "flex items-center group" }, /* @__PURE__ */ React.createElement(
+    SequenceHeader,
+    {
+      index: i,
+      clusters: design2.getClusters(i),
+      onClustersChange: (idx, val) => updateActiveDesign(
+        (e) => e.design.setClusters(idx, val)
+      ),
+      onContextMenu: handleSequenceContextMenu,
+      cellSize
+    }
+  ), /* @__PURE__ */ React.createElement("div", { className: "flex items-center" }, /* @__PURE__ */ React.createElement("div", { className: "w-2" }), row.map((cell, j) => {
+    var _a2, _b;
+    return /* @__PURE__ */ React.createElement(React.Fragment, { key: j }, /* @__PURE__ */ React.createElement(
+      DesignCellComponent,
       {
-        index: j,
-        onContextMenu: handlePeriodContextMenu,
-        cellSize
+        cell,
+        rowIndex: i,
+        colIndex: j,
+        onClick: handleCellClick,
+        onContextMenu: handleCellContextMenu,
+        cellSize,
+        sampleSizeMode: options2.sampleSizeMode,
+        scale: weightMode === "cell" && ((_a2 = cachedWeights[activeIndex]) == null ? void 0 : _a2.cell) ? cachedWeights[activeIndex].cell[i][j] : weightMode === "row" && ((_b = cachedWeights[activeIndex]) == null ? void 0 : _b.row) ? cachedWeights[activeIndex].row[i] : 1
       }
-    ), /* @__PURE__ */ React.createElement("div", { className: "w-2 flex justify-center" }, /* @__PURE__ */ React.createElement(
+    ), /* @__PURE__ */ React.createElement("div", { className: "w-2" }));
+  }))), /* @__PURE__ */ React.createElement("div", { className: "flex items-center h-2 group" }, /* @__PURE__ */ React.createElement(
+    "div",
+    {
+      style: { width: SEQ_HEADER_W },
+      className: "flex justify-end pr-1"
+    },
+    /* @__PURE__ */ React.createElement(
       InsertButton,
       {
         onClick: () => updateActiveDesign(
-          (e) => e.design.insertPeriod(j + 1)
+          (e) => e.design.insertSequence(i + 1)
         )
       }
-    )))))), /* @__PURE__ */ React.createElement("div", { className: "flex flex-col" }, /* @__PURE__ */ React.createElement("div", { className: "flex items-center h-2 group" }, /* @__PURE__ */ React.createElement(
-      "div",
-      {
-        style: { width: 100 },
-        className: "flex justify-end pr-1"
-      },
-      /* @__PURE__ */ React.createElement(
-        InsertButton,
-        {
-          onClick: () => updateActiveDesign((e) => e.design.insertSequence(0))
-        }
-      )
-    )), grid.map((row, i) => /* @__PURE__ */ React.createElement(React.Fragment, { key: i }, /* @__PURE__ */ React.createElement("div", { className: "flex items-center group" }, /* @__PURE__ */ React.createElement(
-      SequenceHeader,
-      {
-        index: i,
-        clusters: design2.getClusters(i),
-        onClustersChange: (idx, val) => updateActiveDesign(
-          (e) => e.design.setClusters(idx, val)
-        ),
-        onContextMenu: handleSequenceContextMenu,
-        cellSize
-      }
-    ), /* @__PURE__ */ React.createElement("div", { className: "flex items-center" }, /* @__PURE__ */ React.createElement("div", { className: "w-2" }), row.map((cell, j) => {
-      var _a2, _b;
-      return /* @__PURE__ */ React.createElement(React.Fragment, { key: j }, /* @__PURE__ */ React.createElement(
-        DesignCellComponent,
-        {
-          cell,
-          rowIndex: i,
-          colIndex: j,
-          onClick: handleCellClick,
-          onContextMenu: handleCellContextMenu,
-          cellSize,
-          sampleSizeMode: options2.sampleSizeMode,
-          scale: weightMode === "cell" && ((_a2 = cachedWeights[activeIndex]) == null ? void 0 : _a2.cell) ? cachedWeights[activeIndex].cell[i][j] : weightMode === "row" && ((_b = cachedWeights[activeIndex]) == null ? void 0 : _b.row) ? cachedWeights[activeIndex].row[i] : 1
-        }
-      ), /* @__PURE__ */ React.createElement("div", { className: "w-2" }));
-    }))), /* @__PURE__ */ React.createElement("div", { className: "flex items-center h-2 group" }, /* @__PURE__ */ React.createElement(
-      "div",
-      {
-        style: { width: 100 },
-        className: "flex justify-end pr-1"
-      },
-      /* @__PURE__ */ React.createElement(
-        InsertButton,
-        {
-          onClick: () => updateActiveDesign(
-            (e) => e.design.insertSequence(i + 1)
-          )
-        }
-      )
-    ))))))
-  ), /* @__PURE__ */ React.createElement("div", { className: "flex flex-wrap gap-3" }, Object.entries(statusConfig).map(([status, config]) => /* @__PURE__ */ React.createElement("div", { key: status, className: "flex items-center gap-1.5" }, /* @__PURE__ */ React.createElement(
-    "div",
+    )
+  ))))))), /* @__PURE__ */ React.createElement("div", { className: "flex flex-wrap items-center justify-between gap-x-6 gap-y-2 px-4 py-2.5 border-t border-ink-100 text-xs" }, /* @__PURE__ */ React.createElement("div", { className: "flex flex-wrap gap-4" }, Object.entries(statusConfig).map(([status, config]) => /* @__PURE__ */ React.createElement("div", { key: status, className: "flex items-center gap-1.5" }, /* @__PURE__ */ React.createElement(
+    "span",
     {
-      className: `w-3 h-3 rounded ${config.bg} ${config.border} border`
+      className: `w-3 h-3 rounded-[3px] border ${config.bg} ${config.border}`
     }
-  ), /* @__PURE__ */ React.createElement("span", { className: "text-xs text-slate-600" }, config.label)))), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-1 md:grid-cols-2 gap-4" }, /* @__PURE__ */ React.createElement("div", { className: "bg-white rounded-xl shadow-lg border border-slate-200 p-4" }, /* @__PURE__ */ React.createElement("h2", { className: "text-sm font-semibold text-slate-700 mb-3" }, "Analysis Options"), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-2 gap-3" }, /* @__PURE__ */ React.createElement("div", { className: "flex flex-col gap-1" }, /* @__PURE__ */ React.createElement("label", { className: "text-xs text-slate-500" }, "Outcome Type"), /* @__PURE__ */ React.createElement(
+  ), /* @__PURE__ */ React.createElement("span", { className: "text-ink-600" }, config.label)))), /* @__PURE__ */ React.createElement("p", { className: "text-ink-600 tabular-nums" }, /* @__PURE__ */ React.createElement("span", { className: "font-semibold text-ink-900" }, numSequences), " ", numSequences === 1 ? "sequence" : "sequences", /* @__PURE__ */ React.createElement("span", { className: "mx-1.5 text-ink-300" }, "/"), /* @__PURE__ */ React.createElement("span", { className: "font-semibold text-ink-900" }, numPeriods), " ", numPeriods === 1 ? "period" : "periods", /* @__PURE__ */ React.createElement("span", { className: "mx-1.5 text-ink-300" }, "/"), /* @__PURE__ */ React.createElement("span", { className: "font-semibold text-ink-900" }, totalClusters), " ", totalClusters === 1 ? "cluster" : "clusters"))), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-1 md:grid-cols-2 gap-5 min-w-0 lg:col-span-2 xl:col-span-1 xl:col-start-1 xl:row-start-2" }, /* @__PURE__ */ React.createElement("section", { className: "panel" }, /* @__PURE__ */ React.createElement("div", { className: "panel-head" }, /* @__PURE__ */ React.createElement("h2", { className: "panel-title" }, "Analysis")), /* @__PURE__ */ React.createElement("div", { className: "panel-body grid grid-cols-2 gap-x-3 gap-y-3.5" }, /* @__PURE__ */ React.createElement("div", { className: "flex flex-col gap-1" }, /* @__PURE__ */ React.createElement("label", { className: "field-label" }, "Outcome type"), /* @__PURE__ */ React.createElement(
     "select",
     {
       value: options2.outcomeType,
       onChange: (e) => updateOptions("outcomeType", e.target.value),
-      className: "px-2 py-1 text-sm border border-slate-300 rounded\r\n                                 focus:outline-none focus:ring-1 focus:ring-blue-500"
+      className: "field"
     },
     /* @__PURE__ */ React.createElement("option", { value: "continuous" }, "Continuous"),
     /* @__PURE__ */ React.createElement("option", { value: "binary" }, "Binary"),
     /* @__PURE__ */ React.createElement("option", { value: "count" }, "Count")
-  )), (options2.outcomeType === "binary" || options2.outcomeType === "count") && /* @__PURE__ */ React.createElement("div", { className: "flex flex-col gap-1" }, /* @__PURE__ */ React.createElement("label", { className: "text-xs text-slate-500" }, "Baseline"), /* @__PURE__ */ React.createElement(
+  )), (options2.outcomeType === "binary" || options2.outcomeType === "count") && /* @__PURE__ */ React.createElement("div", { className: "flex flex-col gap-1" }, /* @__PURE__ */ React.createElement("label", { className: "field-label" }, "Baseline"), /* @__PURE__ */ React.createElement(
     NumericInput,
     {
       step: "0.01",
       min: 1e-3,
       value: options2.baseline,
       onChange: (v) => updateOptions("baseline", v),
-      className: "px-2 py-1 text-sm border border-slate-300 rounded\r\n             focus:outline-none focus:ring-1 focus:ring-blue-500"
+      className: "field"
     }
-  )), /* @__PURE__ */ React.createElement("div", { className: "flex flex-col gap-1" }, /* @__PURE__ */ React.createElement("label", { className: "text-xs text-slate-500 flex items-center gap-1" }, teInfo.label, /* @__PURE__ */ React.createElement("div", { className: "relative inline-block" }, /* @__PURE__ */ React.createElement(
-    "svg",
-    {
-      className: "w-3.5 h-3.5 text-slate-400 cursor-help",
-      onMouseEnter: () => setShowTooltip(true),
-      onMouseLeave: () => setShowTooltip(false),
-      fill: "none",
-      viewBox: "0 0 24 24",
-      stroke: "currentColor"
-    },
-    /* @__PURE__ */ React.createElement(
-      "path",
-      {
-        strokeLinecap: "round",
-        strokeLinejoin: "round",
-        strokeWidth: 2,
-        d: "M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-      }
-    )
-  ), showTooltip && /* @__PURE__ */ React.createElement("div", { className: "absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-2 \r\n                        px-2 py-1 text-xs text-white bg-slate-800 rounded shadow-lg\r\n                        whitespace-nowrap" }, teInfo.tooltip, /* @__PURE__ */ React.createElement("div", { className: "absolute top-full left-1/2 -translate-x-1/2 \r\n                          border-4 border-transparent border-t-slate-800" })))), /* @__PURE__ */ React.createElement(
+  )), /* @__PURE__ */ React.createElement("div", { className: "flex flex-col gap-1" }, /* @__PURE__ */ React.createElement("label", { className: "field-label" }, teInfo.label, infoTip(teInfo.tooltip, showTooltip, setShowTooltip)), /* @__PURE__ */ React.createElement(
     "input",
     {
       type: "number",
       step: "0.1",
       value: options2.treatmentEffect,
       placeholder: teInfo.placeholder,
-      onChange: (e) => updateOptions("treatmentEffect", parseFloat(e.target.value) || 0),
-      className: "px-2 py-1 text-sm border border-slate-300 rounded\r\n               focus:outline-none focus:ring-1 focus:ring-blue-500"
+      onChange: (e) => updateOptions(
+        "treatmentEffect",
+        parseFloat(e.target.value) || 0
+      ),
+      className: "field"
     }
-  )), /* @__PURE__ */ React.createElement("div", { className: "flex flex-col gap-1" }, /* @__PURE__ */ React.createElement("label", { className: "text-xs text-slate-500" }, "ICC"), /* @__PURE__ */ React.createElement(
+  )), /* @__PURE__ */ React.createElement("div", { className: "flex flex-col gap-1" }, /* @__PURE__ */ React.createElement("label", { className: "field-label" }, "ICC"), /* @__PURE__ */ React.createElement(
     "input",
     {
       type: "number",
@@ -2546,27 +2812,27 @@ function App() {
           Math.max(0, parseFloat(e.target.value) || 0)
         )
       ),
-      className: "px-2 py-1 text-sm border border-slate-300 rounded\r\n                                 focus:outline-none focus:ring-1 focus:ring-blue-500"
+      className: "field"
     }
-  )), /* @__PURE__ */ React.createElement("div", { className: "flex flex-col gap-1" }, /* @__PURE__ */ React.createElement("label", { className: "text-xs text-slate-500" }, "Estimator"), /* @__PURE__ */ React.createElement(
+  )), /* @__PURE__ */ React.createElement("div", { className: "col-span-2 flex flex-col gap-1" }, /* @__PURE__ */ React.createElement("label", { className: "field-label" }, "Estimator"), /* @__PURE__ */ React.createElement(
     "select",
     {
       value: options2.estimator,
       onChange: (e) => updateOptions("estimator", e.target.value),
-      className: "px-2 py-1 text-sm border border-slate-300 rounded\r\n               focus:outline-none focus:ring-1 focus:ring-blue-500\r\n               w-auto"
+      className: "field"
     },
     getEstimators(options2.outcomeType).map((est) => /* @__PURE__ */ React.createElement("option", { key: est.key, value: est.key }, est.label))
-  )), numPeriods > 1 && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { className: "flex flex-col gap-1" }, /* @__PURE__ */ React.createElement("label", { className: "text-xs text-slate-500" }, "Sampling"), /* @__PURE__ */ React.createElement(
+  )), numPeriods > 1 && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { className: "flex flex-col gap-1" }, /* @__PURE__ */ React.createElement("label", { className: "field-label" }, "Sampling"), /* @__PURE__ */ React.createElement(
     "select",
     {
       value: options2.samplingStructure,
       onChange: (e) => updateOptions("samplingStructure", e.target.value),
-      className: "px-2 py-1 text-sm border border-slate-300 rounded\r\n                                     focus:outline-none focus:ring-1 focus:ring-blue-500"
+      className: "field"
     },
     /* @__PURE__ */ React.createElement("option", { value: "cross_section" }, "Cross-section"),
-    /* @__PURE__ */ React.createElement("option", { value: "closed_cohort" }, "Closed Cohort"),
-    /* @__PURE__ */ React.createElement("option", { value: "open_cohort" }, "Open Cohort")
-  )), (options2.samplingStructure === "closed_cohort" || options2.samplingStructure === "open_cohort") && /* @__PURE__ */ React.createElement("div", { className: "flex flex-col gap-1" }, /* @__PURE__ */ React.createElement("label", { className: "text-xs text-slate-500" }, "IAC"), /* @__PURE__ */ React.createElement(
+    /* @__PURE__ */ React.createElement("option", { value: "closed_cohort" }, "Closed cohort"),
+    /* @__PURE__ */ React.createElement("option", { value: "open_cohort" }, "Open cohort")
+  )), (options2.samplingStructure === "closed_cohort" || options2.samplingStructure === "open_cohort") && /* @__PURE__ */ React.createElement("div", { className: "flex flex-col gap-1" }, /* @__PURE__ */ React.createElement("label", { className: "field-label" }, "IAC"), /* @__PURE__ */ React.createElement(
     "input",
     {
       type: "number",
@@ -2581,26 +2847,14 @@ function App() {
           Math.max(0, parseFloat(e.target.value) || 0)
         )
       ),
-      className: "px-2 py-1 text-sm border border-slate-300 rounded\r\n                                       focus:outline-none focus:ring-1 focus:ring-blue-500"
+      className: "field"
     }
-  )), options2.samplingStructure === "open_cohort" && /* @__PURE__ */ React.createElement("div", { className: "flex flex-col gap-1" }, /* @__PURE__ */ React.createElement("label", { className: "text-xs text-slate-500 flex items-center gap-1" }, "Replacement Rate", /* @__PURE__ */ React.createElement("div", { className: "relative inline-block group" }, /* @__PURE__ */ React.createElement(
-    "svg",
-    {
-      className: "w-3.5 h-3.5 text-slate-400 cursor-help",
-      fill: "none",
-      viewBox: "0 0 24 24",
-      stroke: "currentColor"
-    },
-    /* @__PURE__ */ React.createElement(
-      "path",
-      {
-        strokeLinecap: "round",
-        strokeLinejoin: "round",
-        strokeWidth: 2,
-        d: "M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-      }
-    )
-  ), /* @__PURE__ */ React.createElement("div", { className: "absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-2 \r\n                        px-2 py-1 text-xs text-white bg-slate-800 rounded shadow-lg\r\n                        whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity" }, "Proportion of individuals replaced each period (0 = closed, 1 = cross-sectional)", /* @__PURE__ */ React.createElement("div", { className: "absolute top-full left-1/2 -translate-x-1/2 \r\n                          border-4 border-transparent border-t-slate-800" })))), /* @__PURE__ */ React.createElement(
+  )), options2.samplingStructure === "open_cohort" && /* @__PURE__ */ React.createElement("div", { className: "flex flex-col gap-1" }, /* @__PURE__ */ React.createElement("label", { className: "field-label" }, "Replacement rate", infoTip(
+    "Proportion of individuals replaced each period (0 = closed, 1 = cross-sectional)",
+    showReplTooltip,
+    setShowReplTooltip,
+    true
+  )), /* @__PURE__ */ React.createElement(
     "input",
     {
       type: "number",
@@ -2610,76 +2864,62 @@ function App() {
       value: (_a = options2.replacementRate) != null ? _a : 0.5,
       onChange: (e) => updateOptions(
         "replacementRate",
-        Math.min(1, Math.max(0, parseFloat(e.target.value) || 0))
+        Math.min(
+          1,
+          Math.max(0, parseFloat(e.target.value) || 0)
+        )
       ),
-      className: "px-2 py-1 text-sm border border-slate-300 rounded\r\n                 focus:outline-none focus:ring-1 focus:ring-blue-500"
+      className: "field"
     }
-  )), /* @__PURE__ */ React.createElement("div", { className: "flex flex-col gap-1" }, /* @__PURE__ */ React.createElement("label", { className: "text-xs text-slate-500 flex items-center gap-1" }, "Correlation", /* @__PURE__ */ React.createElement("div", { className: "relative inline-block" }, /* @__PURE__ */ React.createElement(
-    "svg",
+  )), /* @__PURE__ */ React.createElement("div", { className: "flex flex-col gap-1" }, /* @__PURE__ */ React.createElement("label", { className: "field-label" }, "Correlation", infoTip(
     {
-      className: "w-3.5 h-3.5 text-slate-400 cursor-help",
-      onMouseEnter: () => setShowCorrTooltip(true),
-      onMouseLeave: () => setShowCorrTooltip(false),
-      fill: "none",
-      viewBox: "0 0 24 24",
-      stroke: "currentColor"
-    },
-    /* @__PURE__ */ React.createElement(
-      "path",
-      {
-        strokeLinecap: "round",
-        strokeLinejoin: "round",
-        strokeWidth: 2,
-        d: "M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-      }
-    )
-  ), showCorrTooltip && /* @__PURE__ */ React.createElement("div", { className: "absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-2 \r\n                                              px-3 py-2 text-xs text-white bg-slate-800 rounded shadow-lg\r\n                                              w-64 whitespace-normal" }, {
-    exchangeable: "Constant correlation between all periods within a cluster: Cor(t, t') = \u03C4\xB2.",
-    nested_exchangeable: "Exchangeable with a cluster autocorrelation (CAC) parameter: within-period correlation is \u03C4\xB2 and between-period is \u03C4\xB2 \xD7 CAC.",
-    exponential_decay: "Correlation decays as a power of the time lag: \u03C4\xB2\u03BB^|t\u2212t'|, where \u03BB \u2208 (0,1) controls the rate of decay.",
-    exponential_function: "Correlation decays via an exponential function: \u03C4\xB2 exp(\u2212|t\u2212t'| / \u03BB), where \u03BB is the lengthscale."
-  }[options2.correlationStructure], /* @__PURE__ */ React.createElement("div", { className: "absolute top-full left-1/2 -translate-x-1/2 \r\n                                                border-4 border-transparent border-t-slate-800" })))), /* @__PURE__ */ React.createElement(
+      exchangeable: "Constant correlation between all periods within a cluster: Cor(t, t') = \u03C4\xB2.",
+      nested_exchangeable: "Exchangeable with a cluster autocorrelation (CAC) parameter: within-period correlation is \u03C4\xB2 and between-period is \u03C4\xB2 \xD7 CAC.",
+      exponential_decay: "Correlation decays as a power of the time lag: \u03C4\xB2\u03BB^|t\u2212t'|, where \u03BB \u2208 (0,1) controls the rate of decay.",
+      exponential_function: "Correlation decays via an exponential function: \u03C4\xB2 exp(\u2212|t\u2212t'| / \u03BB), where \u03BB is the lengthscale."
+    }[options2.correlationStructure],
+    showCorrTooltip,
+    setShowCorrTooltip,
+    true
+  )), /* @__PURE__ */ React.createElement(
     "select",
     {
       value: options2.correlationStructure,
-      onChange: (e) => updateOptions(
-        "correlationStructure",
-        e.target.value
-      ),
-      className: "px-2 py-1 text-sm border border-slate-300 rounded\r\n                                     focus:outline-none focus:ring-1 focus:ring-blue-500"
+      onChange: (e) => updateOptions("correlationStructure", e.target.value),
+      className: "field"
     },
     /* @__PURE__ */ React.createElement("option", { value: "exchangeable" }, "Exchangeable"),
-    /* @__PURE__ */ React.createElement("option", { value: "nested_exchangeable" }, "Nested Exch."),
-    /* @__PURE__ */ React.createElement("option", { value: "exponential_decay" }, "Exp. Decay"),
-    /* @__PURE__ */ React.createElement("option", { value: "exponential_function" }, "Exp. Function")
-  )), options2.correlationStructure !== "exchangeable" && /* @__PURE__ */ React.createElement("div", { className: "flex flex-col gap-1" }, /* @__PURE__ */ React.createElement("label", { className: "text-xs text-slate-500" }, options2.correlationStructure === "nested_exchangeable" ? "CAC" : "Lengthscale"), /* @__PURE__ */ React.createElement(
+    /* @__PURE__ */ React.createElement("option", { value: "nested_exchangeable" }, "Nested exch."),
+    /* @__PURE__ */ React.createElement("option", { value: "exponential_decay" }, "Exp. decay"),
+    /* @__PURE__ */ React.createElement("option", { value: "exponential_function" }, "Exp. function")
+  )), options2.correlationStructure !== "exchangeable" && /* @__PURE__ */ React.createElement("div", { className: "flex flex-col gap-1" }, /* @__PURE__ */ React.createElement("label", { className: "field-label" }, options2.correlationStructure === "nested_exchangeable" ? "CAC" : "Lengthscale"), /* @__PURE__ */ React.createElement(
     NumericInput,
     {
       step: "0.1",
       min: 1e-3,
       value: options2.temporalCorrelation,
       onChange: (v) => updateOptions("temporalCorrelation", v),
-      className: "px-2 py-1 text-sm border border-slate-300 rounded\r\n             focus:outline-none focus:ring-1 focus:ring-blue-500"
+      className: "field"
     }
-  ))))), /* @__PURE__ */ React.createElement("div", { className: "bg-white rounded-xl shadow-lg border border-slate-200 p-4" }, /* @__PURE__ */ React.createElement("h2", { className: "text-sm font-semibold text-slate-700 mb-3" }, "Sample Size Options"), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-2 gap-3" }, /* @__PURE__ */ React.createElement("div", { className: "flex flex-col gap-1" }, /* @__PURE__ */ React.createElement("label", { className: "text-xs text-slate-500" }, "Mode"), /* @__PURE__ */ React.createElement(
+  ))))), /* @__PURE__ */ React.createElement("section", { className: "panel" }, /* @__PURE__ */ React.createElement("div", { className: "panel-head" }, /* @__PURE__ */ React.createElement("h2", { className: "panel-title" }, "Sample size")), /* @__PURE__ */ React.createElement("div", { className: "panel-body grid grid-cols-2 gap-x-3 gap-y-3.5" }, /* @__PURE__ */ React.createElement("div", { className: "col-span-2 flex flex-col gap-1" }, /* @__PURE__ */ React.createElement("label", { className: "field-label" }, "Mode"), /* @__PURE__ */ React.createElement(
     "select",
     {
       value: options2.sampleSizeMode,
       onChange: (e) => updateOptions("sampleSizeMode", e.target.value),
-      className: "px-2 py-1 text-sm border border-slate-300 rounded\r\n                                 focus:outline-none focus:ring-1 focus:ring-blue-500"
+      className: "field"
     },
-    /* @__PURE__ */ React.createElement("option", { value: "fixed" }, "Fixed Parameters"),
-    /* @__PURE__ */ React.createElement("option", { value: "exact" }, "Exact Cell Sizes")
-  )), /* @__PURE__ */ React.createElement("div", { className: "flex flex-col gap-1" }, /* @__PURE__ */ React.createElement("label", { className: "text-xs text-slate-500" }, "Mean Size"), /* @__PURE__ */ React.createElement(
+    /* @__PURE__ */ React.createElement("option", { value: "fixed" }, "Fixed parameters"),
+    /* @__PURE__ */ React.createElement("option", { value: "exact" }, "Exact cell sizes")
+  )), /* @__PURE__ */ React.createElement("div", { className: "flex flex-col gap-1" }, /* @__PURE__ */ React.createElement("label", { className: "field-label" }, "Mean size"), /* @__PURE__ */ React.createElement(
     NumericInput,
     {
       step: "1",
       min: 1,
       value: options2.meanClusterSize,
       onChange: (v) => updateOptions("meanClusterSize", Math.floor(v)),
-      className: "px-2 py-1 text-sm border border-slate-300 rounded\r\n             focus:outline-none focus:ring-1 focus:ring-blue-500"
+      className: "field"
     }
-  )), options2.sampleSizeMode !== "exact" && /* @__PURE__ */ React.createElement("div", { className: "flex flex-col gap-1" }, /* @__PURE__ */ React.createElement("label", { className: "text-xs text-slate-500" }, "CV of Sizes"), /* @__PURE__ */ React.createElement(
+  )), options2.sampleSizeMode !== "exact" && /* @__PURE__ */ React.createElement("div", { className: "flex flex-col gap-1" }, /* @__PURE__ */ React.createElement("label", { className: "field-label" }, "CV of sizes"), /* @__PURE__ */ React.createElement(
     "input",
     {
       type: "number",
@@ -2690,23 +2930,20 @@ function App() {
         "cvClusterSize",
         Math.max(0, parseFloat(e.target.value) || 0)
       ),
-      className: "px-2 py-1 text-sm border border-slate-300 rounded\r\n                                   focus:outline-none focus:ring-1 focus:ring-blue-500"
+      className: "field"
     }
-  ))), options2.sampleSizeMode === "exact" && /* @__PURE__ */ React.createElement("p", { className: "text-xs text-slate-500 mt-2" }, "Right-click cells to set individual sizes"), /* @__PURE__ */ React.createElement("div", { className: "mt-3 pt-3 border-t border-slate-200 grid grid-cols-3 gap-2" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "text-lg font-bold text-slate-800" }, numSequences), /* @__PURE__ */ React.createElement("div", { className: "text-xs text-slate-500" }, "Sequences")), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "text-lg font-bold text-slate-800" }, numPeriods), /* @__PURE__ */ React.createElement("div", { className: "text-xs text-slate-500" }, "Periods")), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "text-lg font-bold text-blue-600" }, design2.getTotalClusters()), /* @__PURE__ */ React.createElement("div", { className: "text-xs text-slate-500" }, "Clusters")))))), /* @__PURE__ */ React.createElement("div", { className: "space-y-4" }, /* @__PURE__ */ React.createElement(
+  )), options2.sampleSizeMode === "exact" && /* @__PURE__ */ React.createElement("p", { className: "col-span-2 text-xs text-ink-600" }, "Right-click cells to set individual sizes.")))), /* @__PURE__ */ React.createElement("div", { className: "flex flex-col gap-5 min-w-0 lg:col-start-2 lg:row-start-1 xl:row-span-2" }, /* @__PURE__ */ React.createElement(
     ResultsTable,
     {
       designs,
       cachedResults,
       isStale: resultsStale,
       isCalculating,
-      onRecalculate: recalculateResults
+      onRecalculate: recalculateResults,
+      onExportBundle: exportBundle,
+      isExporting
     }
-  ), /* @__PURE__ */ React.createElement(
-    CorrelationWarning,
-    {
-      warningCode: correlationWarning
-    }
-  ), /* @__PURE__ */ React.createElement(
+  ), /* @__PURE__ */ React.createElement(CorrelationWarning, { warningCode: correlationWarning }), /* @__PURE__ */ React.createElement(
     PowerWarning,
     {
       warning: powerWarning,
@@ -2723,101 +2960,21 @@ function App() {
       isCalculating,
       cacheVersion
     }
-  ), /* @__PURE__ */ React.createElement("div", { className: "bg-white rounded-xl shadow-lg border border-slate-200 p-4" }, /* @__PURE__ */ React.createElement("h2", { className: "text-sm font-semibold text-slate-700 mb-2" }, "Save & Load"), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-slate-500 mb-3" }, "Export your designs to a JSON file, or import a previously saved session."), /* @__PURE__ */ React.createElement("div", { className: "flex gap-2" }, /* @__PURE__ */ React.createElement(
-    "button",
+  )))), cellEditor && /* @__PURE__ */ React.createElement(
+    CellSizeEditor,
     {
-      onClick: () => {
-        const exportData = designs.map((d) => ({
-          name: d.name,
-          design: d.design.toJSON(),
-          options: d.options,
-          results: MathsInterface.calculateResults(d.design, d.options)
-        }));
-        const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: "application/json" });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = "trial-designs.json";
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-      },
-      className: "flex-1 px-3 py-2 bg-slate-700 text-white rounded-lg text-sm font-medium\r\n                 hover:bg-slate-800 transition-colors"
-    },
-    "Export"
-  ), /* @__PURE__ */ React.createElement(
-    "button",
-    {
-      onClick: () => document.getElementById("import-file").click(),
-      className: "flex-1 px-3 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg text-sm font-medium\r\n                 hover:bg-slate-50 transition-colors"
-    },
-    "Import"
-  ), /* @__PURE__ */ React.createElement(
-    "input",
-    {
-      id: "import-file",
-      type: "file",
-      accept: ".json",
-      className: "hidden",
-      onChange: (e) => {
-        var _a2;
-        const file = (_a2 = e.target.files) == null ? void 0 : _a2[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = (event) => {
-          try {
-            const importedData = JSON.parse(event.target.result);
-            const newDesigns = importedData.map((item, idx) => ({
-              name: item.name || `Design ${idx + 1}`,
-              design: TrialDesign.fromJSON(item.design),
-              options: { ...createDefaultOptions(), ...item.options }
-            }));
-            if (newDesigns.length > 0) {
-              setDesigns(newDesigns);
-              setActiveIndex(0);
-              setResultsStale(true);
-            }
-          } catch (err) {
-            console.error("Import failed:", err);
-            alert("Failed to import file: " + err.message);
-          }
-        };
-        reader.readAsText(file);
-        e.target.value = "";
-      }
+      x: cellEditor.x,
+      y: cellEditor.y,
+      initial: cellEditor.initial,
+      onClose: closeCellEditor,
+      onSave: (size) => updateActiveDesign((entry) => {
+        entry.design.getCell(
+          cellEditor.rowIndex,
+          cellEditor.colIndex
+        ).sampleSize = size;
+      })
     }
-  ))), /* @__PURE__ */ React.createElement("div", { className: "bg-white rounded-xl shadow-lg border border-slate-200 p-4" }, /* @__PURE__ */ React.createElement("h2", { className: "text-sm font-semibold text-slate-700 mb-2" }, "Verification Report"), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-slate-500 mb-3" }, "Export a full computation audit with matrices, R verification script, and documentation for regulatory review."), /* @__PURE__ */ React.createElement(
-    "button",
-    {
-      onClick: async () => {
-        var _a2;
-        console.log("Export button clicked");
-        try {
-          setIsExporting(true);
-          console.log("About to call ReportGenerator");
-          console.log("ReportGenerator exists:", !!window.ReportGenerator);
-          console.log("generateBundle exists:", !!((_a2 = window.ReportGenerator) == null ? void 0 : _a2.generateBundle));
-          console.log(window.ReportGenerator.generateBundle.toString());
-          await window.ReportGenerator.generateBundle(
-            design2,
-            options2,
-            activeDesign.name
-          );
-          console.log("Export complete");
-        } catch (err) {
-          console.error("Export failed:", err);
-          console.error("Stack:", err.stack);
-          alert("Export failed: " + err.message);
-        } finally {
-          setIsExporting(false);
-        }
-      },
-      disabled: isExporting || resultsStale,
-      className: "w-full px-3 py-2 bg-blue-600 text-white rounded-lg text-sm\r\n                   font-medium hover:bg-blue-700 disabled:bg-slate-300\r\n                   transition-colors flex items-center justify-center gap-2"
-    },
-    isExporting ? /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("span", { className: "animate-spin" }, "\u27F3"), " Generating...") : "\u{1F4E6} Export Verification Bundle"
-  ), resultsStale && /* @__PURE__ */ React.createElement("p", { className: "text-xs text-amber-600 mt-2" }, "Recalculate results before exporting."))))), contextMenu && /* @__PURE__ */ React.createElement(
+  ), contextMenu && /* @__PURE__ */ React.createElement(
     ContextMenu,
     {
       x: contextMenu.x,

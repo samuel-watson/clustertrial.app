@@ -8,6 +8,7 @@
 #include <vector>
 #include <cmath>
 #include <memory>
+#include <map>
 #include <boost/math/distributions/normal.hpp>
 #include <boost/math/distributions/students_t.hpp>
 
@@ -1301,7 +1302,29 @@ public:
         , treatment_effect(0.5)
         , include_intercept(true) 
     {
-        colnames = {"cl", "t", "n", "int", "int2", "int12", "control"};
+        // wn = 1/sqrt(N_c), xd = sqrt(1/n - 1/N_c), where N_c is the largest
+        // cluster-period size in the cluster (the cohort). They let cohort
+        // terms follow each cell's size; see updateParameters.
+        colnames = {"cl", "t", "n", "int", "int2", "int12", "control", "wn", "xd"};
+    }
+
+    // True when cluster-period sizes vary within some cluster, in which case
+    // the formula carries an extra (xd|gr(cl,t)) cohort term
+    bool hasSizeTerm() const {
+        if (data.cols() < 9) return false;
+        for (int i = 0; i < data.rows(); i++) if (data(i, 8) > 1e-12) return true;
+        return false;
+    }
+
+    // Cohort covariance parameters, in formula order (see JS _buildFormula):
+    //   closed: (wn|gr(cl))          -> [sigma2_ind]
+    //   open:   (wn|gr(cl)*ar0(t))   -> [sigma2_ind, retention]
+    //   then, if sizes vary, (xd|gr(cl,t)) -> [sigma2_ind]
+    // ar0 is retention^|lag|; retention = 1 - replacement rate.
+    void pushCohortTheta(std::vector<double>& theta, double sigma2_ind, double replacement_rate) const {
+        theta.push_back(sigma2_ind);
+        if (sampling_structure == "open_cohort") theta.push_back(1.0 - replacement_rate);
+        if (hasSizeTerm()) theta.push_back(sigma2_ind);
     }
     
     ~GLMMWrapper() = default;
@@ -1438,17 +1461,13 @@ bool updateParameters(double icc, double iac, double cac_or_lengthscale,
                 theta.push_back(cac_or_lengthscale);  // Lengthscale
             }
             
-            // Individual-level covariance for cohort sampling
-            if (sampling_structure == "closed_cohort") {
+            // Individual-level covariance for cohort sampling. The persistent
+            // individual variance enters through (wn|gr(cl)...) with
+            // wn = 1/sqrt(N_c), giving sigma2_ind / N_c between periods, and
+            // (xd|gr(cl,t)) tops each cluster-period up to sigma2_ind / n.
+            if (sampling_structure == "closed_cohort" || sampling_structure == "open_cohort") {
                 double tau3 = iac * (1.0 - icc);
-                tau3 = tau3 / mean_n;
-                theta.push_back(tau3);
-            }
-            else if (sampling_structure == "open_cohort") {
-                double tau3 = iac * (1.0 - icc);
-                tau3 = tau3 / mean_n;
-                theta.push_back(tau3);
-                theta.push_back(replacement_rate);  // Replacement rate (0 = closed, 1 = cross-sectional)
+                pushCohortTheta(theta, tau3, replacement_rate);
             }
             
             // Set residual variance
@@ -1508,9 +1527,9 @@ bool updateParameters(double icc, double iac, double cac_or_lengthscale,
                 // Cluster variance
                 cl_level_error = result.sigma_c * result.sigma_c;
                 
-                // Cohort effect at cluster-period level
+                // Persistent individual variance (scaled per cell by wn, xd)
                 if (sampling_structure == "closed_cohort" || sampling_structure == "open_cohort") {
-                    tau3 = result.sigma_p * result.sigma_p / mean_n;
+                    tau3 = result.sigma_p * result.sigma_p;
                 }
             } else if (family == "poisson"){
                 double mu0 = std::exp(baseline);
@@ -1556,12 +1575,12 @@ bool updateParameters(double icc, double iac, double cac_or_lengthscale,
                 // Cluster variance
                 cl_level_error = result.sigma_c * result.sigma_c;
                 
-                // Cohort effect at cluster-period level
+                // Persistent individual variance (scaled per cell by wn, xd)
                 if (sampling_structure == "closed_cohort" || sampling_structure == "open_cohort") {
-                    tau3 = result.sigma_p * result.sigma_p / mean_n;
+                    tau3 = result.sigma_p * result.sigma_p;
                 }
 
-            }            
+            }
             if (correlation_structure == "nested_exchangeable") {
                 theta.push_back(cac_or_lengthscale * cl_level_error);
                 theta.push_back((1.0 - cac_or_lengthscale) * cl_level_error);
@@ -1573,11 +1592,10 @@ bool updateParameters(double icc, double iac, double cac_or_lengthscale,
             else {
                 theta.push_back(cl_level_error);
             }
-            if (sampling_structure == "closed_cohort" && iac > 0) {
-                theta.push_back(tau3);
-            } else if (sampling_structure == "open_cohort" && iac > 0) {
-                theta.push_back(tau3);
-                theta.push_back(replacement_rate);  // Replacement rate
+            // Always present for cohorts (the formula always has the term);
+            // its variance is zero when IAC is zero
+            if (sampling_structure == "closed_cohort" || sampling_structure == "open_cohort") {
+                pushCohortTheta(theta, iac > 0 ? tau3 : 0.0, replacement_rate);
             }
         }
         
@@ -1625,80 +1643,83 @@ Eigen::MatrixXd buildGEECovarianceMatrix() {
                       sampling_structure == "open_cohort");
     
     double effective_iac = is_cohort ? stored_iac_ : 0.0;
-    
-    double sig2E, sig2, sigindiv;
-    
-    if (effective_iac <= 0.0) {
-        sig2E    = totalvar - sig2CP;
-        sig2     = sig2E / stored_mean_n_;
-        sigindiv = 0.0;
-    } else if (effective_iac >= 1.0 - 1e-10) {
-        sig2E    = 0.0;
-        sig2     = 0.0;
-        sigindiv = (totalvar - sig2CP) / stored_mean_n_;
-    } else {
-        sig2E    = (1.0 - effective_iac) * (totalvar - sig2CP);
-        sig2     = sig2E / stored_mean_n_;
-        sigindiv = sig2E * effective_iac / ((1.0 - effective_iac) * stored_mean_n_);
-    }
-    
+    if (effective_iac < 0.0) effective_iac = 0.0;
+    if (effective_iac > 1.0) effective_iac = 1.0;
+
+    // Individual-level variance, split into a persistent part (shared by a
+    // cohort member across periods) and a transient part
+    double sig2E    = (1.0 - effective_iac) * (totalvar - sig2CP);
+    double sig2Ind  = effective_iac * (totalvar - sig2CP);
+
     double r = stored_cac_or_lambda_;
-    
+
+    // Each cluster's cohort size N_c: its largest cluster-period
+    std::map<int, double> cohort_n;
+    for (int i = 0; i < n_obs; i++) {
+        int cl = static_cast<int>(data(i, 0));
+        cohort_n[cl] = std::max(cohort_n[cl], data(i, 2));
+    }
+
     EM_ASM({
         console.log("=== GEE Variance Components (Kasza/Hemming style) ===");
         console.log("sampling_structure:", UTF8ToString($0));
         console.log("totalvar:", $1);
         console.log("sig2CP:", $2);
         console.log("sig2E:", $3);
-        console.log("sig2:", $4);
-        console.log("sigindiv:", $5);
-        console.log("effective_iac:", $6);
-        console.log("r (CAC):", $7);
-    }, sampling_structure.c_str(), totalvar, sig2CP, sig2E, sig2, sigindiv, effective_iac, r);
-    
-    // Build covariance matrix for cluster-period means
+        console.log("sig2Ind:", $4);
+        console.log("effective_iac:", $5);
+        console.log("r (CAC):", $6);
+    }, sampling_structure.c_str(), totalvar, sig2CP, sig2E, sig2Ind, effective_iac, r);
+
+    // Build covariance matrix for cluster-period means. Each mean averages
+    // n_i individuals, so its individual-level variance is divided by its own
+    // n_i. For cohorts, each period measures a random subset of a cohort of
+    // size N_c, so two periods share persistent effects with covariance
+    // sig2Ind / N_c (decaying with retention for open cohorts). With equal
+    // sizes this is the usual Kasza/Hemming form with n in place of N_c.
     for (int i = 0; i < n_obs; i++) {
         int cl_i = static_cast<int>(data(i, 0));
         int t_i = static_cast<int>(data(i, 1));
-        
+        double n_i = data(i, 2);
+
         for (int j = i; j < n_obs; j++) {
             int cl_j = static_cast<int>(data(j, 0));
             int t_j = static_cast<int>(data(j, 1));
-            
+
             double cov_ij = 0.0;
-            
+
             if (cl_i != cl_j) {
                 cov_ij = 0.0;
             } else {
                 int lag = std::abs(t_i - t_j);
-                
-                // Individual autocorrelation contribution for this lag
-                double sigindiv_lag = 0.0;
-                if (sigindiv > 0.0) {
-                    if (sampling_structure == "closed_cohort") {
-                        // Same individuals across all periods: full autocorrelation
-                        sigindiv_lag = sigindiv;
-                    } else if (sampling_structure == "open_cohort") {
+
+                // Individual-level contribution for this pair
+                double indiv = 0.0;
+                if (lag == 0) {
+                    indiv = (sig2E + sig2Ind) / n_i;
+                } else if (sig2Ind > 0.0) {
+                    double retained = 1.0;
+                    if (sampling_structure == "open_cohort") {
                         // Fraction retained decays exponentially with lag
-                        sigindiv_lag = sigindiv * std::pow(1.0 - stored_replacement_rate_, lag);
+                        retained = std::pow(1.0 - stored_replacement_rate_, lag);
                     }
-                    // cross-sectional: sigindiv is already 0, won't reach here
+                    indiv = sig2Ind * retained / cohort_n[cl_i];
                 }
-                
-                if (correlation_structure == "nested_exchangeable") {
-                    if (lag == 0) {
-                        cov_ij = sigindiv_lag + sig2 + sig2CP;
-                    } else {
-                        cov_ij = sigindiv_lag + r * sig2CP;
-                    }
+
+                // Cluster-level correlation between periods, matching the
+                // GLMM's covariance functions
+                double shared;
+                if (lag == 0 || correlation_structure == "exchangeable") {
+                    shared = 1.0;
+                } else if (correlation_structure == "nested_exchangeable") {
+                    shared = r;
+                } else if (correlation_structure == "exponential_function") {
+                    shared = std::exp(-static_cast<double>(lag) / r);
                 } else {
                     // Exponential decay
-                    if (lag == 0) {
-                        cov_ij = sigindiv_lag + sig2 + sig2CP;
-                    } else {
-                        cov_ij = sigindiv_lag + sig2CP * std::pow(r, lag);
-                    }
+                    shared = std::pow(r, lag);
                 }
+                cov_ij = indiv + sig2CP * shared;
             }
             
             V(i, j) = cov_ij;
@@ -2253,8 +2274,13 @@ VerificationBundle getVerificationBundle(int estimator_type, double cv = 0.0) {
     vb.alpha = alpha;
     vb.target_power = target_power;
     vb.idx = include_intercept ? 1 : 0;
+    // The achieved-moment check below needs beta, so read it first
+    if (model && model_valid) {
+        auto& params0 = model->model.linear_predictor.parameters;
+        vb.beta.assign(params0.begin(), params0.end());
+    }
     // Solver diagnostics for non-Gaussian models
-    if (family != "gaussian") {
+    if (family != "gaussian" && vb.beta.size() >= 2) {
         vb.target_icc = stored_icc_;
         vb.target_iac = stored_iac_;
         vb.target_baseline = stored_mu0_;

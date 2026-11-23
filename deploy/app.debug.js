@@ -388,12 +388,237 @@ function betaCF(x, a, b) {
   }
   return h;
 }
+const TraceMath = /* @__PURE__ */ (() => {
+  const LANCZOS = [
+    0.9999999999998099,
+    676.5203681218851,
+    -1259.1392167224028,
+    771.3234287776531,
+    -176.6150291621406,
+    12.507343278686905,
+    -0.13857109526572012,
+    9984369578019572e-21,
+    15056327351493116e-23
+  ];
+  const FPMIN = 1e-300;
+  const EPS = 1e-15;
+  function lgam(x) {
+    if (x < 0.5) return Math.log(Math.PI / Math.abs(Math.sin(Math.PI * x))) - lgam(1 - x);
+    x -= 1;
+    let a = LANCZOS[0];
+    const t = x + 7.5;
+    for (let i = 1; i < 9; i++) a += LANCZOS[i] / (x + i);
+    return 0.5 * Math.log(2 * Math.PI) + (x + 0.5) * Math.log(t) - t + Math.log(a);
+  }
+  function gammaQ(a, x) {
+    if (x <= 0) return 1;
+    const lead = Math.exp(-x + a * Math.log(x) - lgam(a));
+    if (x < a + 1) {
+      let ap = a, sum = 1 / a, del = sum;
+      for (let n = 0; n < 1e3; n++) {
+        ap += 1;
+        del *= x / ap;
+        sum += del;
+        if (Math.abs(del) < Math.abs(sum) * EPS) break;
+      }
+      return 1 - sum * lead;
+    }
+    let b = x + 1 - a, c = 1 / FPMIN, d = 1 / b, h = d;
+    for (let i = 1; i < 1e3; i++) {
+      const an = -i * (i - a);
+      b += 2;
+      d = an * d + b;
+      if (Math.abs(d) < FPMIN) d = FPMIN;
+      c = b + an / c;
+      if (Math.abs(c) < FPMIN) c = FPMIN;
+      d = 1 / d;
+      const del = d * c;
+      h *= del;
+      if (Math.abs(del - 1) < EPS) break;
+    }
+    return lead * h;
+  }
+  function normCdf(z) {
+    const q = 0.5 * gammaQ(0.5, z * z / 2);
+    return z < 0 ? q : 1 - q;
+  }
+  function normQuantile(p) {
+    if (p <= 0) return -Infinity;
+    if (p >= 1) return Infinity;
+    let x = normalQuantile(p);
+    for (let i = 0; i < 2; i++) {
+      const e = normCdf(x) - p;
+      const u = e * Math.sqrt(2 * Math.PI) * Math.exp(x * x / 2);
+      x -= u / (1 + x * u / 2);
+    }
+    return x;
+  }
+  function betaCf(a, b, x) {
+    const qab = a + b, qap = a + 1, qam = a - 1;
+    let c = 1, d = 1 - qab * x / qap;
+    if (Math.abs(d) < FPMIN) d = FPMIN;
+    d = 1 / d;
+    let h = d;
+    for (let m = 1; m <= 1e3; m++) {
+      const m2 = 2 * m;
+      let aa = m * (b - m) * x / ((qam + m2) * (a + m2));
+      d = 1 + aa * d;
+      if (Math.abs(d) < FPMIN) d = FPMIN;
+      c = 1 + aa / c;
+      if (Math.abs(c) < FPMIN) c = FPMIN;
+      d = 1 / d;
+      h *= d * c;
+      aa = -(a + m) * (qab + m) * x / ((a + m2) * (qap + m2));
+      d = 1 + aa * d;
+      if (Math.abs(d) < FPMIN) d = FPMIN;
+      c = 1 + aa / c;
+      if (Math.abs(c) < FPMIN) c = FPMIN;
+      d = 1 / d;
+      const del = d * c;
+      h *= del;
+      if (Math.abs(del - 1) < EPS) break;
+    }
+    return h;
+  }
+  function betaInc(a, b, x) {
+    if (x <= 0) return 0;
+    if (x >= 1) return 1;
+    const bt = Math.exp(lgam(a + b) - lgam(a) - lgam(b) + a * Math.log(x) + b * Math.log(1 - x));
+    return x < (a + 1) / (a + b + 2) ? bt * betaCf(a, b, x) / a : 1 - bt * betaCf(b, a, 1 - x) / b;
+  }
+  function tCdf(t, nu) {
+    const tail = 0.5 * betaInc(nu / 2, 0.5, nu / (nu + t * t));
+    return t > 0 ? 1 - tail : tail;
+  }
+  function tQuantile2(p, nu) {
+    let lo = -1e7, hi = 1e7;
+    for (let i = 0; i < 200 && hi - lo > 1e-13 * Math.max(1, Math.abs(lo)); i++) {
+      const mid = 0.5 * (lo + hi);
+      if (tCdf(mid, nu) < p) lo = mid;
+      else hi = mid;
+    }
+    return 0.5 * (lo + hi);
+  }
+  function chol(A, n) {
+    const L = new Float64Array(n * n);
+    for (let j = 0; j < n; j++) {
+      let s = A[j * n + j];
+      for (let k = 0; k < j; k++) s -= L[j * n + k] * L[j * n + k];
+      if (!(s > 0)) return null;
+      const d = Math.sqrt(s);
+      L[j * n + j] = d;
+      for (let i = j + 1; i < n; i++) {
+        let t = A[i * n + j];
+        for (let k = 0; k < j; k++) t -= L[i * n + k] * L[j * n + k];
+        L[i * n + j] = t / d;
+      }
+    }
+    return L;
+  }
+  function cholSolve(L, n, B, m) {
+    const X = Float64Array.from(B);
+    for (let c = 0; c < m; c++) {
+      for (let i = 0; i < n; i++) {
+        let s = X[i * m + c];
+        for (let k = 0; k < i; k++) s -= L[i * n + k] * X[k * m + c];
+        X[i * m + c] = s / L[i * n + i];
+      }
+      for (let i = n - 1; i >= 0; i--) {
+        let s = X[i * m + c];
+        for (let k = i + 1; k < n; k++) s -= L[k * n + i] * X[k * m + c];
+        X[i * m + c] = s / L[i * n + i];
+      }
+    }
+    return X;
+  }
+  function invSPD(A, n) {
+    const L = chol(A, n);
+    if (!L) return null;
+    const I = new Float64Array(n * n);
+    for (let i = 0; i < n; i++) I[i * n + i] = 1;
+    return cholSolve(L, n, I, n);
+  }
+  function tmul(A, B, k, p, q) {
+    const C = new Float64Array(p * q);
+    for (let r = 0; r < k; r++)
+      for (let i = 0; i < p; i++) {
+        const a = A[r * p + i];
+        if (a === 0) continue;
+        for (let j = 0; j < q; j++) C[i * q + j] += a * B[r * q + j];
+      }
+    return C;
+  }
+  function mul(A, B, n, k, m) {
+    const C = new Float64Array(n * m);
+    for (let i = 0; i < n; i++)
+      for (let r = 0; r < k; r++) {
+        const a = A[i * k + r];
+        if (a === 0) continue;
+        for (let j = 0; j < m; j++) C[i * m + j] += a * B[r * m + j];
+      }
+    return C;
+  }
+  function addTo(A, B) {
+    for (let i = 0; i < A.length; i++) A[i] += B[i];
+  }
+  function maxRelDiff(A, B) {
+    let num = 0, den = 0;
+    for (let i = 0; i < A.length; i++) {
+      num = Math.max(num, Math.abs(A[i] - B[i]));
+      den = Math.max(den, Math.abs(B[i]));
+    }
+    return den > 0 ? num / den : num;
+  }
+  return { normCdf, normQuantile, tCdf, tQuantile: tQuantile2, chol, cholSolve, invSPD, tmul, mul, addTo, maxRelDiff };
+})();
+const TRACE_ESTIMATORS = {
+  0: { variance: "model", dist: "z" },
+  1: { variance: "model", dist: "bw" },
+  2: { variance: "model", dist: "kr" },
+  3: { variance: "kr", dist: "kr" },
+  4: { variance: "model", dist: "z" },
+  5: { variance: "robust_ind", dist: "z" },
+  6: { variance: "gee_exch", dist: "z" },
+  7: { variance: "gee_exch", dist: "bw" },
+  8: { variance: "deff", dist: "z" },
+  9: { variance: "deff", dist: "bw" }
+};
+const TRACE_REASONS = {
+  kr: "The Kenward-Roger adjustment comes from glmmrBase and is not recomputed here. Power below is recomputed from the engine\u2019s standard error.",
+  cv: "The correction for variable cluster sizes uses the engine\u2019s internal weights, which aren\u2019t exported. Power below is recomputed from the engine\u2019s standard error.",
+  order: "Skipped because the rows of X are not in the expected order.",
+  pd: "Skipped because a covariance block is not positive definite.",
+  missing: "Skipped because the matrices needed were not exported for this estimator."
+};
+const relDiff = (a, b) => {
+  const d = Math.abs(a - b);
+  const s = Math.max(Math.abs(a), Math.abs(b));
+  return s > 0 ? d / s : d;
+};
+const fmtNum = (x, sig = 6) => {
+  if (x == null || !Number.isFinite(x)) return "\u2014";
+  if (x === 0) return "0";
+  const a = Math.abs(x);
+  if (a < 1e-4 || a >= 1e7) return x.toExponential(Math.min(sig - 1, 4));
+  return String(parseFloat(x.toPrecision(sig)));
+};
+const dofText = (d) => d == null || Number.isNaN(d) ? "not a number" : fmtNum(d);
+const fmtDiff = (d) => d === 0 ? "0" : d < 1e-15 ? "< 10\u207B\xB9\u2075" : d.toExponential(1);
 let wasmReady = false;
 const MathsInterface = {
   // Cache for GLMM wrapper objects (keyed by design ID)
   _modelCache: /* @__PURE__ */ new Map(),
+  // Last full-precision engine result per design ID (see calculateResults)
+  _rawResults: /* @__PURE__ */ new Map(),
+  _traceSignature(design2, options2, estimatorCode, cv) {
+    const grid = design2.getGrid().map((row) => row.map((c) => {
+      var _a;
+      return `${c.status}:${(_a = c.sampleSize) != null ? _a : ""}`;
+    }).join(",")).join("|");
+    return `${estimatorCode}|${cv}|${design2._clustersPerSequence.join(",")}|${grid}|${JSON.stringify(options2)}`;
+  },
   // Column names for data matrix
-  _colnames: ["cl", "t", "n", "int", "int2", "int12", "control"],
+  _colnames: ["cl", "t", "n", "int", "int2", "int12", "control", "wn", "xd"],
   // Initialize the WASM module (call once at app startup)
   async initialize() {
     if (wasmReady) return true;
@@ -424,7 +649,11 @@ const MathsInterface = {
     const outcomeType = (_c = options2.outcomeType) != null ? _c : "continuous";
     const meanClusterSize = (_d = options2.meanClusterSize) != null ? _d : 20;
     const sampleSizeMode = (_e = options2.sampleSizeMode) != null ? _e : "fixed";
-    const hash = `${design2.numSequences}-${design2.numPeriods}-${structure}-${clusters}-${totalClusters}-${corrStructure}-${samplingStructure}-${outcomeType}-${sampleSizeMode}-${meanClusterSize}`;
+    const cellSizes = sampleSizeMode === "exact" ? grid.map((row) => row.map((cell) => {
+      var _a2;
+      return (_a2 = cell.sampleSize) != null ? _a2 : "";
+    }).join(",")).join("|") : "";
+    const hash = `${design2.numSequences}-${design2.numPeriods}-${structure}-${clusters}-${totalClusters}-${corrStructure}-${samplingStructure}-${outcomeType}-${sampleSizeMode}-${meanClusterSize}-${cellSizes}`;
     console.log("_getDesignHash:", hash);
     return hash;
   },
@@ -466,10 +695,25 @@ const MathsInterface = {
         clNumber++;
       }
     }
+    const cohortN = /* @__PURE__ */ new Map();
+    data.forEach((row) => {
+      var _a2;
+      return cohortN.set(row[0], Math.max((_a2 = cohortN.get(row[0])) != null ? _a2 : 0, row[2]));
+    });
+    data.forEach((row) => {
+      const N = cohortN.get(row[0]);
+      row.push(1 / Math.sqrt(N));
+      row.push(Math.sqrt(Math.max(0, 1 / row[2] - 1 / N)));
+    });
     return data;
   },
+  // Sizes differ within at least one cluster, so cohort terms need the
+  // extra per-cluster-period component (xd)
+  _hasSizeTerm(dataMatrix) {
+    return dataMatrix.some((row) => row[8] > 1e-12);
+  },
   // Build formula string (matches C++ formula generation)
-  _buildFormula(design2, options2) {
+  _buildFormula(design2, options2, dataMatrix = this._generateDataMatrix(design2, options2)) {
     let formula = "int";
     const reString = options2.heterogeneousTe ? "int" : "1";
     if (options2.twoTreatments) {
@@ -502,10 +746,10 @@ const MathsInterface = {
       default:
         formula += `+(${reString}|gr(cl))`;
     }
-    if (options2.samplingStructure === "closed_cohort") {
-      formula += "+(1|gr(cl))";
-    } else if (options2.samplingStructure === "open_cohort") {
-      formula += "+(1|gr(cl)*ar0(t))";
+    const cohort = options2.samplingStructure === "closed_cohort" || options2.samplingStructure === "open_cohort";
+    if (cohort) {
+      formula += options2.samplingStructure === "closed_cohort" ? "+(wn|gr(cl))" : "+(wn|gr(cl)*ar0(t))";
+      if (dataMatrix && this._hasSizeTerm(dataMatrix)) formula += "+(xd|gr(cl,t))";
     }
     return formula;
   },
@@ -588,7 +832,7 @@ const MathsInterface = {
     const dataMatrix = this._generateDataMatrix(design2, options2);
     console.log("dataMatrix rows:", dataMatrix.length);
     console.log("dataMatrix cols:", (_a = dataMatrix[0]) == null ? void 0 : _a.length);
-    const formula = this._buildFormula(design2, options2);
+    const formula = this._buildFormula(design2, options2, dataMatrix);
     const family = this._getFamily(options2.outcomeType);
     const link = this._getLink(options2.outcomeType);
     const corrStructure = this._getCorrelationStructure(options2.correlationStructure);
@@ -696,8 +940,12 @@ const MathsInterface = {
     wrapper.setTargetPower((_k = options2.targetPower) != null ? _k : 0.8);
     console.log("Calling setIncludeIntercept...");
     wrapper.setIncludeIntercept(options2.includeIntercept !== false);
-    console.log("Calling updateWeights...");
-    wrapper.updateWeights(clusterSize);
+    const exact = options2.sampleSizeMode === "exact";
+    const meanSize = exact ? meanN : clusterSize;
+    if (!exact) {
+      console.log("Calling updateWeights...");
+      wrapper.updateWeights(clusterSize);
+    }
     console.log("Calling updateParameters...");
     wrapper.updateParameters(
       icc,
@@ -705,7 +953,7 @@ const MathsInterface = {
       cacOrLengthscale,
       teLink,
       baselineLink,
-      clusterSize,
+      meanSize,
       numPeriods,
       replacementRate
     );
@@ -800,6 +1048,443 @@ const MathsInterface = {
     this._modelCache.delete(tempId);
     return result;
   },
+  // Step-by-step record of how one design's result was produced, for the
+  // Calculation panel. It reads the same cached model object that
+  // calculateResults used, so its numbers are the results table's numbers,
+  // then recomputes them in JavaScript from the exported X and covariance.
+  getCalculationTrace(design2, options2, designId) {
+    var _a;
+    if (!wasmReady) throw new Error("The statistics engine is still loading.");
+    const wrapper = this._getWrapper(designId, design2, options2);
+    const code = this._getEstimatorCode(options2.estimator);
+    const cv = options2.sampleSizeMode === "exact" ? 0 : (_a = options2.cvClusterSize) != null ? _a : 0;
+    const prior = this._rawResults.get(designId);
+    const res = prior && prior.wrapper === wrapper && prior.sig === this._traceSignature(design2, options2, code, cv) ? prior.result : wrapper.calculatePower(code, cv);
+    if (!res.valid) {
+      throw new Error(res.error || "The engine could not calculate power for this design.");
+    }
+    const engine = { se: res.se, power: res.power, dof: res.dof, mde: res.mde, ciWidth: res.ci_width };
+    const dataMatrix = this._generateDataMatrix(design2, options2);
+    const seqOf = [];
+    for (let s = 0, cl = 1; s < design2.numSequences; s++) {
+      for (let j = 0; j < design2.getClusters(s); j++) seqOf[cl++] = s;
+    }
+    const clusters = [];
+    dataMatrix.forEach((row, r) => {
+      let c = clusters[clusters.length - 1];
+      if (!c || c.id !== row[0]) {
+        c = { id: row[0], seq: seqOf[row[0]], start: r, k: 0, periods: [], sizes: [], treated: [] };
+        clusters.push(c);
+      }
+      c.k++;
+      c.periods.push(row[1]);
+      c.sizes.push(row[2]);
+      c.treated.push(row[3]);
+    });
+    const raw = wrapper.getVerificationBundle(code, cv);
+    const matFields = ["X", "Sigma", "M", "Minv", "bread", "meat", "V_working", "Sigma_true"];
+    const handles = [raw.beta, raw.theta, ...matFields.map((f) => raw[f] && raw[f].data)].filter(Boolean);
+    const readVec = (v) => {
+      const n = v.size();
+      const out = new Float64Array(n);
+      for (let i = 0; i < n; i++) out[i] = v.get(i);
+      return out;
+    };
+    const readMat = (me) => {
+      if (!me || !me.rows || !me.cols || me.data.size() !== me.rows * me.cols) return null;
+      return { rows: me.rows, cols: me.cols, data: readVec(me.data), label: me.label };
+    };
+    const readBlocks = (me) => {
+      const n = dataMatrix.length;
+      if (!me || me.rows !== n || me.cols !== n || me.data.size() !== n * n) return null;
+      return clusters.map((c) => {
+        const out = new Float64Array(c.k * c.k);
+        for (let i = 0; i < c.k; i++)
+          for (let j = 0; j < c.k; j++) out[i * c.k + j] = me.data.get((c.start + i) * n + c.start + j);
+        return out;
+      });
+    };
+    const offBlock = (me) => {
+      const n = dataMatrix.length;
+      if (!me || me.rows !== n || clusters.length < 2) return 0;
+      const a = clusters[0], b = clusters[1];
+      let m = 0;
+      for (let i = 0; i < a.k; i++)
+        for (let j = 0; j < b.k; j++) m = Math.max(m, Math.abs(me.data.get((a.start + i) * n + b.start + j)));
+      return m;
+    };
+    try {
+      if (!raw.valid) throw new Error(raw.error || "The engine could not export the calculation.");
+      const X = readMat(raw.X);
+      if (!X || X.rows !== dataMatrix.length) throw new Error("The design matrix could not be read.");
+      const P = X.cols;
+      const idx = raw.idx;
+      let rowOrderOk = true;
+      for (let r = 0; r < X.rows; r++) if (X.data[r * P + idx] !== dataMatrix[r][3]) rowOrderOk = false;
+      const colLabels = [];
+      for (let j = 0; j < P; j++) {
+        let allOne = true, binary = true, equalsT = true;
+        const ts = /* @__PURE__ */ new Set();
+        for (let r = 0; r < X.rows; r++) {
+          const v = X.data[r * P + j];
+          if (v !== 1) allOne = false;
+          if (v !== 0 && v !== 1) binary = false;
+          if (v === 1) ts.add(dataMatrix[r][1]);
+          if (v !== dataMatrix[r][1]) equalsT = false;
+        }
+        colLabels.push(
+          j === idx ? "treatment" : allOne ? "intercept" : binary && ts.size === 1 ? `period ${[...ts][0]}` : equalsT ? "t" : `x${j + 1}`
+        );
+      }
+      const family = raw.family;
+      const trace = {
+        code,
+        info: TRACE_ESTIMATORS[code] || TRACE_ESTIMATORS[0],
+        cv,
+        family,
+        link: raw.link,
+        formula: raw.formula,
+        correlation: raw.correlation_structure,
+        sampling: raw.sampling_structure,
+        numSequences: design2.numSequences,
+        numPeriods: design2.numPeriods,
+        totalClusters: design2.getTotalClusters(),
+        nRows: X.rows,
+        totalN: dataMatrix.reduce((s, row) => s + row[2], 0),
+        clusters,
+        X,
+        P,
+        idx,
+        colLabels,
+        rowOrderOk,
+        sizeTerm: this._hasSizeTerm(dataMatrix),
+        beta: Array.from(readVec(raw.beta)),
+        theta: Array.from(readVec(raw.theta)),
+        te: raw.te,
+        alpha: raw.alpha,
+        targetPower: raw.target_power,
+        M: readMat(raw.M),
+        Minv: readMat(raw.Minv),
+        bread: readMat(raw.bread),
+        meat: readMat(raw.meat),
+        blocks: {
+          Sigma: readBlocks(raw.Sigma),
+          V_working: readBlocks(raw.V_working),
+          Sigma_true: readBlocks(raw.Sigma_true)
+        },
+        offBlockMax: Math.max(offBlock(raw.Sigma), offBlock(raw.V_working), offBlock(raw.Sigma_true)),
+        bundle: { varDelta: raw.var_delta, se: raw.se, power: raw.power, dof: raw.dof },
+        solver: family === "gaussian" ? null : {
+          mu0: raw.target_baseline,
+          mu1: raw.target_baseline_trt,
+          icc: raw.target_icc,
+          iac: raw.target_iac,
+          sigmaC: raw.raw_sigma_c,
+          sigmaP: raw.raw_sigma_p,
+          iterations: raw.solver_iterations,
+          converged: raw.solver_converged
+        },
+        engine
+      };
+      trace.params = this._traceParameters(trace, options2);
+      trace.expectedBlock = this._traceExpectedBlock(trace, options2);
+      trace.reproduced = this._traceReproduce(trace);
+      trace.test = this._traceTest(trace);
+      trace.checks = this._traceChecks(trace);
+      return trace;
+    } finally {
+      handles.forEach((h) => {
+        try {
+          h.delete();
+        } catch (e) {
+        }
+      });
+    }
+  },
+  // The parameter values the engine should have received, from the inputs,
+  // alongside what it actually holds (theta, beta).
+  _traceParameters(t, o) {
+    var _a, _b, _c, _d, _e, _f;
+    const icc = (_a = o.icc) != null ? _a : 0.05;
+    const iac = (_b = o.iac) != null ? _b : 0.8;
+    const lam = (_d = (_c = o.temporalCorrelation) != null ? _c : o.cac) != null ? _d : 0.8;
+    const nbar = o.sampleSizeMode === "exact" ? t.totalN / t.nRows : (_e = o.meanClusterSize) != null ? _e : 20;
+    const rr = (_f = o.replacementRate) != null ? _f : 1;
+    const cohort = t.sampling === "closed_cohort" || t.sampling === "open_cohort";
+    const lamLabel = t.correlation === "exponential_function" ? "Lengthscale \u03BB" : "Decay \u03BB";
+    const f = (x) => fmtNum(x, 6);
+    const rows = [];
+    let residual = null;
+    const cohortRows = (formula, expr, value) => {
+      rows.push({ label: "Persistent individual variance", formula, expr, expected: value });
+      if (t.sampling === "open_cohort") {
+        rows.push({ label: "Retention between periods", formula: "1 \u2212 replacement rate", expr: `1 \u2212 ${f(rr)}`, expected: 1 - rr });
+      }
+      if (t.sizeTerm) {
+        rows.push({ label: "Extra individual variance for smaller cluster-periods", formula, expr, expected: value });
+      }
+    };
+    if (t.family === "gaussian") {
+      if (t.correlation === "nested_exchangeable") {
+        rows.push({ label: "Cluster variance", formula: "ICC \xD7 CAC", expr: `${f(icc)} \xD7 ${f(lam)}`, expected: icc * lam });
+        rows.push({ label: "Cluster-period variance", formula: "ICC \xD7 (1 \u2212 CAC)", expr: `${f(icc)} \xD7 ${f(1 - lam)}`, expected: icc * (1 - lam) });
+      } else if (t.correlation === "exponential_decay" || t.correlation === "exponential_function") {
+        rows.push({ label: "Cluster variance", formula: "ICC", expr: f(icc), expected: icc });
+        rows.push({ label: lamLabel, formula: "\u03BB", expr: f(lam), expected: lam });
+      } else {
+        rows.push({ label: "Cluster variance", formula: "ICC", expr: f(icc), expected: icc });
+      }
+      if (cohort) {
+        cohortRows("IAC \xD7 (1 \u2212 ICC)", `${f(iac)} \xD7 ${f(1 - icc)}`, iac * (1 - icc));
+        residual = { formula: "(1 \u2212 ICC) \xD7 (1 \u2212 IAC)", expr: `${f(1 - icc)} \xD7 ${f(1 - iac)}`, value: (1 - icc) * (1 - iac) };
+      } else {
+        residual = { formula: "1 \u2212 ICC", expr: `1 \u2212 ${f(icc)}`, value: 1 - icc };
+      }
+    } else if (t.solver) {
+      const sc2 = t.solver.sigmaC * t.solver.sigmaC;
+      const sc = `${f(t.solver.sigmaC)}\xB2`;
+      if (t.correlation === "nested_exchangeable") {
+        rows.push({ label: "Cluster variance", formula: "CAC \xD7 \u03C3_c\xB2", expr: `${f(lam)} \xD7 ${sc}`, expected: lam * sc2 });
+        rows.push({ label: "Cluster-period variance", formula: "(1 \u2212 CAC) \xD7 \u03C3_c\xB2", expr: `${f(1 - lam)} \xD7 ${sc}`, expected: (1 - lam) * sc2 });
+      } else if (t.correlation === "exponential_decay" || t.correlation === "exponential_function") {
+        rows.push({ label: "Cluster variance", formula: "\u03C3_c\xB2", expr: sc, expected: sc2 });
+        rows.push({ label: lamLabel, formula: "\u03BB", expr: f(lam), expected: lam });
+      } else {
+        rows.push({ label: "Cluster variance", formula: "\u03C3_c\xB2", expr: sc, expected: sc2 });
+      }
+      if (cohort) {
+        const sp2 = iac > 0 ? t.solver.sigmaP * t.solver.sigmaP : 0;
+        cohortRows("\u03C3_p\xB2", iac > 0 ? `${f(t.solver.sigmaP)}\xB2` : "0 (IAC is 0)", sp2);
+      }
+    }
+    const comparable = !o.heterogeneousTe && !o.twoTreatments && rows.length === t.theta.length;
+    rows.forEach((r, i) => {
+      r.engine = t.theta[i];
+    });
+    const allMatch = comparable && rows.every((r) => relDiff(r.engine, r.expected) < 1e-9);
+    let betaExpected = null;
+    if (t.family === "gaussian" && !o.twoTreatments) {
+      betaExpected = t.beta.map((_, j) => {
+        var _a2, _b2;
+        return j === 0 ? (_a2 = o.baseline) != null ? _a2 : 0.5 : j === 1 ? (_b2 = o.treatmentEffect) != null ? _b2 : 0.5 : 0;
+      });
+    }
+    const betaMatch = betaExpected ? betaExpected.every((b, j) => Math.abs(b - t.beta[j]) < 1e-12) : null;
+    return { icc, iac, lam, nbar, rr, cohort, rows, residual, comparable, allMatch, betaExpected, betaMatch };
+  },
+  // Gaussian cross-sectional designs have a closed-form covariance block, so
+  // it can be checked against the correlation structure the user picked.
+  _traceExpectedBlock(t, o) {
+    if (t.family !== "gaussian" || t.sampling !== "cross_section" || o.heterogeneousTe || o.twoTreatments) return null;
+    const { icc, lam } = t.params;
+    const shared = (lag) => {
+      switch (t.correlation) {
+        case "nested_exchangeable":
+          return lag === 0 ? icc : icc * lam;
+        case "exponential_decay":
+          return icc * Math.pow(lam, lag);
+        case "exponential_function":
+          return icc * Math.exp(-lag / lam);
+        default:
+          return icc;
+      }
+    };
+    const formula = {
+      exchangeable: { diag: "ICC + (1 \u2212 ICC) / n", off: "ICC" },
+      nested_exchangeable: { diag: "ICC + (1 \u2212 ICC) / n", off: "ICC \xD7 CAC" },
+      exponential_decay: { diag: "ICC + (1 \u2212 ICC) / n", off: "ICC \xD7 \u03BB^|t \u2212 s|" },
+      exponential_function: { diag: "ICC + (1 \u2212 ICC) / n", off: "ICC \xD7 exp(\u2212|t \u2212 s| / \u03BB)" }
+    }[t.correlation] || { diag: "ICC + (1 \u2212 ICC) / n", off: "ICC" };
+    const build = (c) => {
+      const out = new Float64Array(c.k * c.k);
+      for (let i = 0; i < c.k; i++)
+        for (let j = 0; j < c.k; j++) {
+          const lag = Math.abs(c.periods[i] - c.periods[j]);
+          out[i * c.k + j] = shared(lag) + (i === j ? (1 - icc) / c.sizes[i] : 0);
+        }
+      return out;
+    };
+    let maxDiff = null;
+    const impliedN = /* @__PURE__ */ new Set();
+    let sizesVary = false;
+    if (t.blocks.Sigma) {
+      maxDiff = 0;
+      t.clusters.forEach((c, ci) => {
+        const b = t.blocks.Sigma[ci];
+        maxDiff = Math.max(maxDiff, TraceMath.maxRelDiff(build(c), b));
+        for (let i = 0; i < c.k; i++) {
+          impliedN.add(Number(((1 - icc) / (b[i * c.k + i] - shared(0))).toPrecision(6)));
+          if (c.sizes[i] !== c.sizes[0] || c.sizes[i] !== t.clusters[0].sizes[0]) sizesVary = true;
+        }
+      });
+    }
+    const sizeNote = maxDiff != null && maxDiff >= 1e-8 && sizesVary && impliedN.size === 1 ? `The engine's covariance implies a cluster-period size of ${[...impliedN][0]} in every cell, not the cell sizes you entered.` : null;
+    return { formula, build, maxDiff, sizeNote };
+  },
+  // Recompute the variance of the treatment effect from the exported X and
+  // covariance blocks only, one cluster at a time.
+  _traceReproduce(t) {
+    const { X, P, clusters, blocks, idx, cv, info } = t;
+    const M_ = TraceMath;
+    if (!t.rowOrderOk) return { reason: "order" };
+    const Xc = (c) => X.data.subarray(c.start * P, (c.start + c.k) * P);
+    const zeros = () => new Float64Array(P * P);
+    if (info.variance === "model" || info.variance === "kr" || info.variance === "deff") {
+      if (!blocks.Sigma) return { reason: "missing" };
+      const M = zeros();
+      for (let ci = 0; ci < clusters.length; ci++) {
+        const c = clusters[ci];
+        const L = M_.chol(blocks.Sigma[ci], c.k);
+        if (!L) return { reason: "pd" };
+        const x = Xc(c);
+        M_.addTo(M, M_.tmul(x, M_.cholSolve(L, c.k, x, P), c.k, P, P));
+      }
+      const Minv = M_.invSPD(M, P);
+      if (!Minv) return { reason: "pd" };
+      const out = { M, Minv, mDiff: t.M ? M_.maxRelDiff(M, t.M.data) : null, modelVar: Minv[idx * P + idx] };
+      if (info.variance === "kr") return { ...out, reason: "kr" };
+      if (cv > 0 && info.variance === "model") return { ...out, reason: "cv" };
+      return { ...out, varDelta: out.modelVar };
+    }
+    if (info.variance === "robust_ind") {
+      if (cv > 0) return { reason: "cv" };
+      if (!blocks.Sigma) return { reason: "missing" };
+      const A = zeros(), B = zeros();
+      clusters.forEach((c, ci) => {
+        const x = Xc(c);
+        M_.addTo(A, M_.tmul(x, x, c.k, P, P));
+        M_.addTo(B, M_.tmul(x, M_.mul(blocks.Sigma[ci], x, c.k, c.k, P), c.k, P, P));
+      });
+      const Ainv = M_.invSPD(A, P);
+      if (!Ainv) return { reason: "pd" };
+      const V = M_.mul(M_.mul(Ainv, B, P, P, P), Ainv, P, P, P);
+      return {
+        varDelta: V[idx * P + idx],
+        breadDiff: t.bread ? M_.maxRelDiff(Ainv, t.bread.data) : null,
+        meatDiff: t.meat ? M_.maxRelDiff(B, t.meat.data) : null
+      };
+    }
+    if (info.variance === "gee_exch") {
+      if (!blocks.V_working || !blocks.Sigma_true) return { reason: "missing" };
+      const M = zeros(), meat = zeros();
+      for (let ci = 0; ci < clusters.length; ci++) {
+        const c = clusters[ci];
+        const L = M_.chol(blocks.V_working[ci], c.k);
+        if (!L) return { reason: "pd" };
+        const x = Xc(c);
+        const Y = M_.cholSolve(L, c.k, x, P);
+        M_.addTo(M, M_.tmul(x, Y, c.k, P, P));
+        M_.addTo(meat, M_.tmul(Y, M_.mul(blocks.Sigma_true[ci], Y, c.k, c.k, P), c.k, P, P));
+      }
+      const Minv = M_.invSPD(M, P);
+      if (!Minv) return { reason: "pd" };
+      const V = M_.mul(M_.mul(Minv, meat, P, P, P), Minv, P, P, P);
+      return {
+        varDelta: V[idx * P + idx],
+        mDiff: t.M ? M_.maxRelDiff(M, t.M.data) : null,
+        meatDiff: t.meat ? M_.maxRelDiff(meat, t.meat.data) : null
+      };
+    }
+    return { reason: "missing" };
+  },
+  // Critical value, test statistic, power, MDE and CI half-width
+  _traceTest(t) {
+    const rep = t.reproduced;
+    const se = rep.varDelta != null ? Math.sqrt(rep.varDelta) : t.engine.se;
+    const z = t.info.dist === "z";
+    const dof = t.info.dist === "bw" ? Math.max(1, t.nRows - t.P) : t.info.dist === "kr" ? t.engine.dof : null;
+    if (!z && !(dof > 0 && Number.isFinite(dof))) {
+      return { se, seFromEngine: rep.varDelta == null, dist: "t", dof, invalidDof: true };
+    }
+    const q = (p) => z ? TraceMath.normQuantile(p) : TraceMath.tQuantile(p, dof);
+    const cdf = (x) => z ? TraceMath.normCdf(x) : TraceMath.tCdf(x, dof);
+    const crit = q(1 - t.alpha / 2);
+    const qPower = q(t.targetPower);
+    const stat = Math.abs(t.te) / se;
+    const power = t.info.dist === "kr" && dof <= 1 ? 0 : cdf(stat - crit);
+    return { se, seFromEngine: rep.varDelta == null, dist: z ? "z" : "t", dof, crit, qPower, stat, power, mde: (crit + qPower) * se, ciWidth: crit * se };
+  },
+  _traceChecks(t) {
+    const checks = [];
+    const add = (label, status, detail) => checks.push({ label, status, detail });
+    const rep = t.reproduced;
+    const tol = 1e-8;
+    add(
+      "Design matrix rows follow the design grid",
+      t.rowOrderOk ? "ok" : "fail",
+      t.rowOrderOk ? "The treatment column of X matches the grid for every cluster-period." : "The treatment column of X does not match the grid, so nothing below was recomputed."
+    );
+    if (t.clusters.length > 1) {
+      add(
+        "Clusters are independent",
+        t.offBlockMax === 0 ? "ok" : "fail",
+        t.offBlockMax === 0 ? "Covariance between clusters 1 and 2 is exactly zero, so the matrix can be handled one cluster block at a time." : `Covariance between clusters 1 and 2 reaches ${fmtNum(t.offBlockMax, 3)}.`
+      );
+    }
+    if (t.params.comparable) {
+      add(
+        "Model parameters match your inputs",
+        t.params.allMatch && t.params.betaMatch !== false ? "ok" : "fail",
+        t.params.allMatch ? "Each covariance parameter the engine holds equals the value derived from your inputs." : "At least one covariance parameter differs from the value derived from your inputs."
+      );
+    }
+    if (t.expectedBlock && t.expectedBlock.maxDiff != null) {
+      const ok = t.expectedBlock.maxDiff < tol;
+      add(
+        "Covariance follows your inputs",
+        ok ? "ok" : "fail",
+        `Largest relative difference between the engine's covariance blocks and the closed form for your ICC, correlation structure and cell sizes: ${fmtDiff(t.expectedBlock.maxDiff)}.` + (t.expectedBlock.sizeNote ? ` ${t.expectedBlock.sizeNote}` : "")
+      );
+    }
+    const mDiff = rep.mDiff;
+    if (mDiff != null) {
+      add(
+        "Information matrix recomputed",
+        mDiff < tol ? "ok" : "fail",
+        `Rebuilt here from X and the covariance blocks. Largest relative difference: ${fmtDiff(mDiff)}.`
+      );
+    }
+    if (rep.varDelta != null) {
+      const d = relDiff(rep.varDelta, t.engine.se * t.engine.se);
+      add(
+        "Variance of the treatment effect recomputed",
+        d < tol ? "ok" : "fail",
+        `Relative difference from the engine: ${fmtDiff(d)}.`
+      );
+    } else {
+      add("Variance of the treatment effect recomputed", "na", TRACE_REASONS[rep.reason] || TRACE_REASONS.missing);
+    }
+    if (t.info.dist === "bw") {
+      const ok = Math.abs(t.test.dof - t.engine.dof) < 1e-9;
+      add(
+        "Degrees of freedom",
+        ok ? "ok" : "fail",
+        `Cluster-periods minus fixed effects: ${t.nRows} \u2212 ${t.P} = ${t.test.dof}. Engine: ${fmtNum(t.engine.dof, 6)}.`
+      );
+    }
+    if (t.test.invalidDof) {
+      add(
+        "Power and minimum detectable effect recomputed",
+        "fail",
+        `The engine returned no valid degrees of freedom (${dofText(t.engine.dof)}) for this design, so its power (${fmtNum(t.engine.power)}) has no t reference distribution and can\u2019t be reproduced.`
+      );
+    } else {
+      const dPow = Math.abs(t.test.power - t.engine.power);
+      const dMde = relDiff(t.test.mde, t.engine.mde);
+      add(
+        "Power and minimum detectable effect recomputed",
+        dPow < 1e-7 && dMde < 1e-7 ? "ok" : "fail",
+        `Power differs by ${fmtDiff(dPow)}, MDE by ${fmtDiff(dMde)} (relative).`
+      );
+    }
+    const dBundle = relDiff(t.bundle.se, t.engine.se);
+    add(
+      "Verification bundle agrees with the results table",
+      dBundle < 1e-10 ? "ok" : "fail",
+      dBundle < 1e-10 ? "The export uses a separate code path in the engine; it gives the same standard error." : `The export's standard error (${fmtNum(t.bundle.se, 6)}) differs from the results table (${fmtNum(t.engine.se, 6)}).`
+    );
+    return checks;
+  },
   getCorrelationWarning(designId = "default") {
     if (!wasmReady) {
       return 0;
@@ -831,6 +1516,13 @@ const MathsInterface = {
       const cv = options2.sampleSizeMode === "exact" ? 0 : (_a = options2.cvClusterSize) != null ? _a : 0;
       const result = wrapper.calculatePower(estimatorCode, cv);
       console.log("calculatePower returned:", result);
+      if (result.valid) {
+        this._rawResults.set(designId, {
+          wrapper,
+          sig: this._traceSignature(design2, options2, estimatorCode, cv),
+          result: { valid: true, se: result.se, power: result.power, dof: result.dof, mde: result.mde, ci_width: result.ci_width }
+        });
+      }
       if (!result.valid) {
         console.warn("Power calculation warning:", result.error);
         return {
@@ -1226,7 +1918,9 @@ const ICON_PATHS = {
   plus: "M8 3.5v9M3.5 8h9",
   close: "M4.5 4.5l7 7M11.5 4.5l-7 7",
   bundle: "M2.75 5 8 2.25 13.25 5v6L8 13.75 2.75 11V5ZM2.75 5 8 7.75 13.25 5M8 7.75v6",
-  image: "M2.75 3.25h10.5v9.5H2.75zM2.75 10.5l3-3 2.5 2.5 1.75-1.75 3.25 3.25M10.25 6.25v.1"
+  image: "M2.75 3.25h10.5v9.5H2.75zM2.75 10.5l3-3 2.5 2.5 1.75-1.75 3.25 3.25M10.25 6.25v.1",
+  chevron: "M6 3.5 10.5 8 6 12.5",
+  minus: "M4 8h8"
 };
 const Icon = ({ name, className = "w-4 h-4" }) => /* @__PURE__ */ React.createElement(
   "svg",
@@ -1570,6 +2264,275 @@ const ResultsTable = ({
     isExporting ? "Generating\u2026" : "Export verification bundle"
   )));
 };
+const blockStats = (b, k) => {
+  let dmin = Infinity, dmax = -Infinity, omin = Infinity, omax = -Infinity;
+  for (let i = 0; i < k; i++)
+    for (let j = 0; j < k; j++) {
+      const v = b[i * k + j];
+      if (i === j) {
+        dmin = Math.min(dmin, v);
+        dmax = Math.max(dmax, v);
+      } else {
+        omin = Math.min(omin, v);
+        omax = Math.max(omax, v);
+      }
+    }
+  return { dmin, dmax, omin, omax };
+};
+const withSubs = (s) => String(s).split(/_([A-Za-z0-9]+)/).map(
+  (part, i) => i % 2 ? /* @__PURE__ */ React.createElement("sub", { key: i, className: "text-[0.75em]" }, part) : part
+);
+const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+const fmtSpan = (lo, hi) => !Number.isFinite(lo) ? "\u2014" : relDiff(lo, hi) < 1e-12 ? fmtNum(lo) : `${fmtNum(lo)} to ${fmtNum(hi)}`;
+const Agree = ({ ok, engine }) => /* @__PURE__ */ React.createElement("span", { className: `ml-2 inline-flex items-center gap-1 font-sans text-[11px] align-middle ${ok ? "text-accent-700" : "text-red-600 font-medium"}` }, /* @__PURE__ */ React.createElement(Icon, { name: ok ? "check" : "alert", className: "w-3 h-3" }), ok ? "matches the engine" : `engine gives ${engine}`);
+const CalcStep = ({ n, title, children }) => /* @__PURE__ */ React.createElement("li", { className: "grid grid-cols-[24px_minmax(0,1fr)] gap-3 py-4 border-t border-ink-100 first:border-t-0" }, /* @__PURE__ */ React.createElement("span", { className: "mt-px w-6 h-6 rounded-full bg-ink-100 text-ink-600 text-xs font-medium flex items-center justify-center tabular-nums" }, n), /* @__PURE__ */ React.createElement("div", { className: "min-w-0" }, /* @__PURE__ */ React.createElement("h3", { className: "text-sm font-semibold text-ink-900 mb-1" }, title), children));
+const CalcText = ({ children }) => /* @__PURE__ */ React.createElement("p", { className: "text-[13px] leading-relaxed text-ink-600 mb-2 max-w-[78ch]" }, children);
+const CalcMathBox = ({ children }) => /* @__PURE__ */ React.createElement("div", { className: "font-mono text-xs leading-6 text-ink-800 bg-ink-50 border border-ink-100 rounded-md px-3 py-1.5 overflow-x-auto whitespace-nowrap" }, children);
+const Reveal = ({ label, children }) => {
+  const [open, setOpen] = useState(false);
+  return /* @__PURE__ */ React.createElement("div", { className: "mt-2" }, /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      type: "button",
+      onClick: () => setOpen((o) => !o),
+      "aria-expanded": open,
+      className: "inline-flex items-center gap-1 text-xs font-medium text-accent-700 hover:text-accent-800 hover:underline underline-offset-2"
+    },
+    /* @__PURE__ */ React.createElement(Icon, { name: "chevron", className: `w-3 h-3 transition-transform ${open ? "rotate-90" : ""}` }),
+    open ? `Hide ${label}` : `Show ${label}`
+  ), open && children);
+};
+const MatrixTable = ({ data, cols, rowStart = 0, rowEnd, rowLabels, colLabels, highlight }) => {
+  const rows = [];
+  for (let i = rowStart; i < rowEnd; i++) rows.push(i);
+  const colIdx = Array.from({ length: cols }, (_, j) => j);
+  return /* @__PURE__ */ React.createElement("div", { className: "mt-2 max-h-72 max-w-full overflow-auto border border-ink-200 rounded-md bg-white" }, /* @__PURE__ */ React.createElement("table", { className: "text-[11px] font-mono tabular-nums border-collapse" }, colLabels && /* @__PURE__ */ React.createElement("thead", { className: "sticky top-0 bg-ink-50" }, /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("th", { className: "px-2 py-1" }), colIdx.map((j) => /* @__PURE__ */ React.createElement("th", { key: j, className: "px-2 py-1 text-right font-medium text-ink-500 whitespace-nowrap" }, colLabels[j])))), /* @__PURE__ */ React.createElement("tbody", null, rows.map((i) => /* @__PURE__ */ React.createElement("tr", { key: i, className: "border-t border-ink-100" }, /* @__PURE__ */ React.createElement("th", { className: "px-2 py-0.5 text-left font-normal text-ink-500 whitespace-nowrap" }, rowLabels ? rowLabels(i) : i + 1), colIdx.map((j) => /* @__PURE__ */ React.createElement(
+    "td",
+    {
+      key: j,
+      className: `px-2 py-0.5 text-right whitespace-nowrap ${highlight && highlight[0] === i && highlight[1] === j ? "bg-accent-50 text-accent-800 font-medium" : "text-ink-800"}`
+    },
+    fmtNum(data[i * cols + j], 5)
+  )))))));
+};
+const CovHeatmap = ({ block, k, periods, label }) => {
+  let max = 0;
+  for (let i = 0; i < block.length; i++) max = Math.max(max, Math.abs(block[i]));
+  const px = Math.max(10, Math.min(28, Math.floor(252 / k)));
+  return /* @__PURE__ */ React.createElement("figure", { className: "m-0 shrink-0" }, /* @__PURE__ */ React.createElement(
+    "div",
+    {
+      className: "inline-grid gap-px bg-ink-200 border border-ink-200",
+      style: { gridTemplateColumns: `repeat(${k}, ${px}px)` },
+      role: "img",
+      "aria-label": `${label}: ${k} by ${k} covariance block`
+    },
+    Array.from(block).map((v, i) => {
+      const r = Math.floor(i / k), c = i % k;
+      const a = max > 0 ? Math.abs(v) / max : 0;
+      return /* @__PURE__ */ React.createElement(
+        "div",
+        {
+          key: i,
+          title: `${label.replace(/_/g, "")}, period ${periods[r]} \xD7 period ${periods[c]}: ${fmtNum(v, 8)}`,
+          style: { width: px, height: px, backgroundColor: `rgba(11, 88, 98, ${(0.05 + 0.9 * a).toFixed(3)})` }
+        }
+      );
+    })
+  ), /* @__PURE__ */ React.createElement("figcaption", { className: "mt-1 text-[11px] text-ink-500" }, withSubs(label), " \xB7 periods ", periods[0], "\u2013", periods[k - 1]));
+};
+const BlockSummary = ({ block, k, expected }) => {
+  const s = blockStats(block, k);
+  const e = expected ? blockStats(expected, k) : null;
+  const ok = expected ? TraceMath.maxRelDiff(expected, block) < 1e-8 : null;
+  return /* @__PURE__ */ React.createElement(CalcMathBox, null, /* @__PURE__ */ React.createElement("div", null, "diagonal = ", fmtSpan(s.dmin, s.dmax)), k > 1 && /* @__PURE__ */ React.createElement("div", null, "off-diagonal = ", fmtSpan(s.omin, s.omax)), e && /* @__PURE__ */ React.createElement("div", { className: "text-ink-600" }, "expected from your inputs: ", fmtSpan(e.dmin, e.dmax), k > 1 && /* @__PURE__ */ React.createElement(React.Fragment, null, " and ", fmtSpan(e.omin, e.omax)), /* @__PURE__ */ React.createElement(Agree, { ok, engine: "different values" })));
+};
+const traceStatus = (checks) => checks.some((c) => c.status === "fail") ? "fail" : checks.some((c) => c.status === "na") ? "partial" : "ok";
+const TRACE_CONFIRM_ROWS = 1e3;
+const STATUS_PILL = {
+  ok: { text: "Reproduced independently", cls: "bg-accent-50 text-accent-800 border-accent-200", icon: "check" },
+  partial: { text: "Partly reproduced", cls: "bg-ink-50 text-ink-700 border-ink-200", icon: "info" },
+  fail: { text: "Discrepancy found", cls: "bg-red-50 text-red-800 border-red-200", icon: "alert" }
+};
+const CalculationSteps = ({ t, seqView, setSeqView }) => {
+  const { info, family, params, engine, test, reproduced: rep } = t;
+  const binary = family === "binomial";
+  const count = family === "poisson";
+  const sequencesWithClusters = [...new Set(t.clusters.map((c) => c.seq))];
+  const shown = t.clusters.find((c) => c.seq === seqView) || t.clusters[0];
+  const shownIndex = t.clusters.indexOf(shown);
+  const tName = t.colLabels[t.idx];
+  const P = t.P;
+  const engineVar = engine.se * engine.se;
+  const shownVar = rep.varDelta != null ? rep.varDelta : engineVar;
+  const muBar = t.solver ? (t.solver.mu0 + t.solver.mu1) / 2 : null;
+  const scale = binary ? "probability" : count ? "rate" : "outcome";
+  const rowLabel = (i) => {
+    const c = t.clusters.find((cc) => i >= cc.start && i < cc.start + cc.k);
+    return `cl ${c.id}, t${c.periods[i - c.start]}`;
+  };
+  const sub = (s) => /* @__PURE__ */ React.createElement("sub", { className: "text-[0.75em]" }, s);
+  const seqPicker = sequencesWithClusters.length > 1 && /* @__PURE__ */ React.createElement("label", { className: "inline-flex items-center gap-2 text-xs text-ink-600" }, "Show cluster from", /* @__PURE__ */ React.createElement(
+    "select",
+    {
+      value: shown.seq,
+      onChange: (e) => setSeqView(Number(e.target.value)),
+      className: "field field-sm"
+    },
+    sequencesWithClusters.map((s) => /* @__PURE__ */ React.createElement("option", { key: s, value: s }, "Sequence ", s + 1))
+  ));
+  const covBlocks = info.variance === "gee_exch" ? [
+    { key: "V_working", label: "Working covariance V_w" },
+    { key: "Sigma_true", label: "True covariance \u03A3" }
+  ] : [{ key: "Sigma", label: info.variance === "deff" ? `Covariance V (${scale} scale)` : "Covariance \u03A3" }];
+  const expectedShown = t.expectedBlock && info.variance !== "deff" ? t.expectedBlock.build(shown) : null;
+  const mat = (m, highlight) => m && /* @__PURE__ */ React.createElement(
+    MatrixTable,
+    {
+      data: m.data,
+      cols: m.cols,
+      rowEnd: m.rows,
+      rowLabels: (i) => t.colLabels[i],
+      colLabels: t.colLabels,
+      highlight: highlight ? [t.idx, t.idx] : null
+    }
+  );
+  const mInfo = t.M ? mat(t.M) : null;
+  return /* @__PURE__ */ React.createElement("ol", { className: "px-4" }, /* @__PURE__ */ React.createElement(CalcStep, { n: 1, title: "From the design grid to the model" }, /* @__PURE__ */ React.createElement(CalcText, null, plural(t.totalClusters, "cluster"), " in ", plural(t.numSequences, "sequence"), " over", " ", plural(t.numPeriods, "period"), " give ", plural(t.nRows, "cluster-period"), ". Each is one row of the model, and between them they hold ", t.totalN.toLocaleString(), " participants."), /* @__PURE__ */ React.createElement(CalcMathBox, null, /* @__PURE__ */ React.createElement("div", null, "formula: ", t.formula), /* @__PURE__ */ React.createElement("div", null, "family: ", family, ", link: ", t.link), /* @__PURE__ */ React.createElement("div", null, "X: ", t.nRows, " \xD7 ", P, " \xB7 columns: ", t.colLabels.join(", "))), /* @__PURE__ */ React.createElement("div", { className: "mt-3 flex flex-wrap items-center justify-between gap-2" }, /* @__PURE__ */ React.createElement("span", { className: "text-xs text-ink-600" }, "Rows of X for cluster ", shown.id, " (sequence ", shown.seq + 1, ")"), seqPicker), /* @__PURE__ */ React.createElement(
+    MatrixTable,
+    {
+      data: t.X.data,
+      cols: P,
+      rowStart: shown.start,
+      rowEnd: shown.start + shown.k,
+      rowLabels: rowLabel,
+      colLabels: t.colLabels
+    }
+  ), t.nRows > shown.k && /* @__PURE__ */ React.createElement(Reveal, { label: `all ${t.nRows} rows` }, /* @__PURE__ */ React.createElement(MatrixTable, { data: t.X.data, cols: P, rowEnd: Math.min(t.nRows, 500), rowLabels: rowLabel, colLabels: t.colLabels }), t.nRows > 500 && /* @__PURE__ */ React.createElement("p", { className: "mt-1 text-[11px] text-ink-500" }, "First 500 rows. The verification bundle has the full matrix."))), /* @__PURE__ */ React.createElement(CalcStep, { n: 2, title: "Your inputs become model parameters" }, family === "gaussian" ? /* @__PURE__ */ React.createElement(CalcText, null, "The total outcome variance is fixed at 1, so the treatment effect is in standard deviation units. The ICC splits that variance into a part shared within each cluster and a residual part.") : /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(CalcText, null, "Your baseline and effect are ", binary ? "probabilities" : "rates", " on the observed scale. The engine solves for conditional parameters on the ", t.link, " scale that reproduce them together with the ICC", params.cohort && params.iac > 0 ? " and IAC" : "", "."), t.solver && /* @__PURE__ */ React.createElement(CalcMathBox, null, /* @__PURE__ */ React.createElement("div", null, "targets: ", binary ? "p" : "\u03BC", sub("0"), " = ", fmtNum(t.solver.mu0), ", ", binary ? "p" : "\u03BC", sub("1"), " =", " ", fmtNum(t.solver.mu1), ", ICC = ", fmtNum(t.solver.icc), params.cohort && params.iac > 0 ? `, IAC = ${fmtNum(t.solver.iac)}` : ""), /* @__PURE__ */ React.createElement("div", null, "solved: \u03B2", sub("0"), " = ", fmtNum(t.beta[0]), ", \u03B2", sub("1"), " = ", fmtNum(t.beta[1]), ", \u03C3", sub("c"), " =", " ", fmtNum(t.solver.sigmaC), params.cohort && params.iac > 0 ? /* @__PURE__ */ React.createElement(React.Fragment, null, ", \u03C3", sub("p"), " = ", fmtNum(t.solver.sigmaP)) : null), /* @__PURE__ */ React.createElement("div", { className: t.solver.converged ? "" : "text-red-700" }, "solver: ", t.solver.converged ? "converged" : "did not converge", " after ", t.solver.iterations, " iterations"))), params.rows.length > 0 && /* @__PURE__ */ React.createElement("div", { className: "mt-2 max-w-full overflow-x-auto" }, /* @__PURE__ */ React.createElement("table", { className: "text-xs border-collapse" }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", { className: "text-left text-ink-500 border-b border-ink-200" }, /* @__PURE__ */ React.createElement("th", { className: "py-1 pr-4 font-medium" }, "Covariance parameter"), /* @__PURE__ */ React.createElement("th", { className: "py-1 pr-4 font-medium" }, "From your inputs"), /* @__PURE__ */ React.createElement("th", { className: "py-1 pr-4 font-medium text-right" }, "Value"), /* @__PURE__ */ React.createElement("th", { className: "py-1 font-medium text-right" }, "Engine holds"))), /* @__PURE__ */ React.createElement("tbody", { className: "font-mono tabular-nums text-ink-800" }, params.rows.map((r, i) => {
+    const ok = params.comparable && relDiff(r.engine, r.expected) < 1e-9;
+    return /* @__PURE__ */ React.createElement("tr", { key: i, className: "border-b border-ink-100" }, /* @__PURE__ */ React.createElement("td", { className: "py-1 pr-4 font-sans text-ink-700 whitespace-nowrap" }, r.label), /* @__PURE__ */ React.createElement("td", { className: "py-1 pr-4 whitespace-nowrap" }, withSubs(r.formula), " = ", r.expr), /* @__PURE__ */ React.createElement("td", { className: "py-1 pr-4 text-right" }, fmtNum(r.expected)), /* @__PURE__ */ React.createElement("td", { className: "py-1 text-right whitespace-nowrap" }, fmtNum(r.engine), params.comparable && /* @__PURE__ */ React.createElement(
+      Icon,
+      {
+        name: ok ? "check" : "alert",
+        className: `inline w-3 h-3 ml-1.5 -mt-0.5 ${ok ? "text-accent-700" : "text-red-600"}`
+      }
+    )));
+  })))), (params.residual || family === "gaussian") && /* @__PURE__ */ React.createElement("div", { className: "mt-2" }, /* @__PURE__ */ React.createElement(CalcMathBox, null, params.residual && /* @__PURE__ */ React.createElement("div", null, "residual variance \u03C3\xB2 = ", params.residual.formula, " = ", params.residual.expr, " = ", fmtNum(params.residual.value)), /* @__PURE__ */ React.createElement("div", null, "fixed effects \u03B2: ", t.beta.map((b, j) => `${t.colLabels[j] || `\u03B2${j}`} ${fmtNum(b)}`).join(", "), params.betaMatch != null && /* @__PURE__ */ React.createElement(Agree, { ok: params.betaMatch, engine: "other values" }))))), /* @__PURE__ */ React.createElement(CalcStep, { n: 3, title: "Covariance of the cluster-period means" }, /* @__PURE__ */ React.createElement(CalcText, null, "Clusters are independent, so the full ", t.nRows, " \xD7 ", t.nRows, " matrix is block-diagonal, with one block per cluster. Below is the ", shown.k, " \xD7 ", shown.k, " block for cluster ", shown.id, " (sequence ", shown.seq + 1, "). Hover a cell for its value.", info.variance === "gee_exch" && muBar != null && /* @__PURE__ */ React.createElement(React.Fragment, null, " ", "GEE builds a working covariance V on the ", scale, " scale and moves it to the ", t.link, " scale with the delta method: V", sub("w"), " = V \xD7 (1 / ", binary ? "\u03BC\u0304(1 \u2212 \u03BC\u0304)" : "\u03BC\u0304", ")\xB2, where \u03BC\u0304 = (", binary ? "p" : "\u03BC", "\u2080 +", " ", binary ? "p" : "\u03BC", "\u2081) / 2 = ", fmtNum(muBar), ". The true covariance \u03A3 comes from the GLMM and enters the sandwich."), info.variance === "deff" && muBar != null && /* @__PURE__ */ React.createElement(React.Fragment, null, " ", "The design-effect method works on the ", scale, " scale, with the variance evaluated at \u03BC\u0304 =", " ", fmtNum(muBar), ", the average of the two arms."), t.cv > 0 && (info.variance === "gee_exch" || info.variance === "deff") && /* @__PURE__ */ React.createElement(React.Fragment, null, " The diagonal includes the correction for variable cluster sizes, \xD7 (1 + cv\xB2) with cv = ", fmtNum(t.cv), ".")), sequencesWithClusters.length > 1 && /* @__PURE__ */ React.createElement("div", { className: "mb-2" }, seqPicker), /* @__PURE__ */ React.createElement("div", { className: "flex flex-wrap items-start gap-x-6 gap-y-4" }, covBlocks.map(
+    (b) => t.blocks[b.key] ? /* @__PURE__ */ React.createElement("div", { key: b.key, className: "flex flex-wrap items-start gap-4 min-w-0" }, /* @__PURE__ */ React.createElement(CovHeatmap, { block: t.blocks[b.key][shownIndex], k: shown.k, periods: shown.periods, label: b.label }), /* @__PURE__ */ React.createElement("div", { className: "min-w-0" }, /* @__PURE__ */ React.createElement(
+      BlockSummary,
+      {
+        block: t.blocks[b.key][shownIndex],
+        k: shown.k,
+        expected: b.key === "Sigma" ? expectedShown : null
+      }
+    ), b.key === "Sigma" && expectedShown && /* @__PURE__ */ React.createElement("p", { className: "mt-1 text-[11px] text-ink-500 font-mono" }, "\u03A3", sub("tt"), " = ", t.expectedBlock.formula.diag, ", \u03A3", sub("ts"), " = ", t.expectedBlock.formula.off), /* @__PURE__ */ React.createElement(Reveal, { label: "block as numbers" }, /* @__PURE__ */ React.createElement(
+      MatrixTable,
+      {
+        data: t.blocks[b.key][shownIndex],
+        cols: shown.k,
+        rowEnd: shown.k,
+        rowLabels: (i) => `t${shown.periods[i]}`,
+        colLabels: shown.periods.map((p) => `t${p}`)
+      }
+    )))) : /* @__PURE__ */ React.createElement("p", { key: b.key, className: "text-xs text-ink-500" }, b.label, " was not exported for this estimator.")
+  ))), /* @__PURE__ */ React.createElement(CalcStep, { n: 4, title: "Variance of the treatment effect" }, info.variance === "model" && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(CalcText, null, "The model-based (generalised least squares) variance: invert the information matrix and read off the treatment entry."), /* @__PURE__ */ React.createElement(CalcMathBox, null, /* @__PURE__ */ React.createElement("div", null, "M = X\u1D40 \u03A3\u207B\xB9 X ", /* @__PURE__ */ React.createElement("span", { className: "text-ink-500" }, "(", P, " \xD7 ", P, ")")), t.cv > 0 && /* @__PURE__ */ React.createElement("div", null, "with variable cluster sizes, \u03A3", sub("tt"), " is increased by cv\xB2 / w", sub("t"), " before inverting (cv = ", fmtNum(t.cv), ")"), /* @__PURE__ */ React.createElement("div", null, "Var(\u03B4\u0302) = [M\u207B\xB9]", sub(`${tName}, ${tName}`), " = ", fmtNum(engineVar, 8)), rep.varDelta != null && /* @__PURE__ */ React.createElement("div", { className: "text-ink-600" }, "recomputed here, one cluster block at a time: ", fmtNum(rep.varDelta, 8), /* @__PURE__ */ React.createElement(Agree, { ok: relDiff(rep.varDelta, engineVar) < 1e-8, engine: fmtNum(engineVar, 8) }))), /* @__PURE__ */ React.createElement(Reveal, { label: "M" }, mInfo), /* @__PURE__ */ React.createElement(Reveal, { label: t.cv > 0 ? "M\u207B\xB9 (with cluster-size correction)" : "M\u207B\xB9" }, mat(t.Minv, true))), info.variance === "kr" && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(CalcText, null, "Kenward-Roger starts from the model-based variance and inflates it for the uncertainty in estimating the covariance parameters. The adjustment is computed by glmmrBase."), /* @__PURE__ */ React.createElement(CalcMathBox, null, /* @__PURE__ */ React.createElement("div", null, "M = X\u1D40 \u03A3\u207B\xB9 X ", /* @__PURE__ */ React.createElement("span", { className: "text-ink-500" }, "(", P, " \xD7 ", P, ")")), rep.modelVar != null && /* @__PURE__ */ React.createElement("div", null, "model-based Var(\u03B4\u0302) = [M\u207B\xB9]", sub(`${tName}, ${tName}`), " = ", fmtNum(rep.modelVar, 8)), /* @__PURE__ */ React.createElement("div", null, "Kenward-Roger Var(\u03B4\u0302) = ", fmtNum(engineVar, 8)), rep.modelVar != null && /* @__PURE__ */ React.createElement("div", { className: "text-ink-600" }, "inflation over model-based: \xD7 ", fmtNum(engineVar / rep.modelVar, 5))), /* @__PURE__ */ React.createElement(Reveal, { label: "M" }, mInfo), /* @__PURE__ */ React.createElement(Reveal, { label: "adjusted covariance" }, mat(t.Minv, true))), info.variance === "robust_ind" && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(CalcText, null, "A sandwich variance: the estimate assumes independent observations, and the true covariance \u03A3 goes in the middle."), /* @__PURE__ */ React.createElement(CalcMathBox, null, /* @__PURE__ */ React.createElement("div", null, "B = X\u1D40 X, meat = X\u1D40 \u03A3 X"), /* @__PURE__ */ React.createElement("div", null, "Var(\u03B4\u0302) = [B\u207B\xB9 \xB7 meat \xB7 B\u207B\xB9]", sub(`${tName}, ${tName}`), " = ", fmtNum(engineVar, 8)), rep.varDelta != null && /* @__PURE__ */ React.createElement("div", { className: "text-ink-600" }, "recomputed here: ", fmtNum(rep.varDelta, 8), /* @__PURE__ */ React.createElement(Agree, { ok: relDiff(rep.varDelta, engineVar) < 1e-8, engine: fmtNum(engineVar, 8) }))), /* @__PURE__ */ React.createElement(Reveal, { label: "B\u207B\xB9" }, mat(t.bread)), /* @__PURE__ */ React.createElement(Reveal, { label: "meat" }, mat(t.meat)), /* @__PURE__ */ React.createElement(Reveal, { label: "sandwich" }, mat(t.Minv, true))), info.variance === "gee_exch" && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(CalcText, null, "A sandwich variance: the GEE estimate is weighted by the working covariance, and the true covariance goes in the middle."), /* @__PURE__ */ React.createElement(CalcMathBox, null, /* @__PURE__ */ React.createElement("div", null, "M = X\u1D40 V", sub("w"), "\u207B\xB9 X, meat = X\u1D40 V", sub("w"), "\u207B\xB9 \u03A3 V", sub("w"), "\u207B\xB9 X"), /* @__PURE__ */ React.createElement("div", null, "Var(\u03B4\u0302) = [M\u207B\xB9 \xB7 meat \xB7 M\u207B\xB9]", sub(`${tName}, ${tName}`), " = ", fmtNum(engineVar, 8)), rep.varDelta != null && /* @__PURE__ */ React.createElement("div", { className: "text-ink-600" }, "recomputed here, one cluster block at a time: ", fmtNum(rep.varDelta, 8), /* @__PURE__ */ React.createElement(Agree, { ok: relDiff(rep.varDelta, engineVar) < 1e-8, engine: fmtNum(engineVar, 8) }))), /* @__PURE__ */ React.createElement(Reveal, { label: "M" }, mInfo), /* @__PURE__ */ React.createElement(Reveal, { label: "meat" }, mat(t.meat)), /* @__PURE__ */ React.createElement(Reveal, { label: "sandwich" }, mat(t.Minv, true))), info.variance === "deff" && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(CalcText, null, "Generalised least squares on the ", scale, " scale, using the covariance V from step 3."), /* @__PURE__ */ React.createElement(CalcMathBox, null, /* @__PURE__ */ React.createElement("div", null, "M = X\u1D40 V\u207B\xB9 X ", /* @__PURE__ */ React.createElement("span", { className: "text-ink-500" }, "(", P, " \xD7 ", P, ")")), /* @__PURE__ */ React.createElement("div", null, "Var(\u03B4\u0302) = [M\u207B\xB9]", sub(`${tName}, ${tName}`), " = ", fmtNum(engineVar, 8)), rep.varDelta != null && /* @__PURE__ */ React.createElement("div", { className: "text-ink-600" }, "recomputed here, one cluster block at a time: ", fmtNum(rep.varDelta, 8), /* @__PURE__ */ React.createElement(Agree, { ok: relDiff(rep.varDelta, engineVar) < 1e-8, engine: fmtNum(engineVar, 8) }))), /* @__PURE__ */ React.createElement(Reveal, { label: "M" }, mInfo), /* @__PURE__ */ React.createElement(Reveal, { label: "M\u207B\xB9" }, mat(t.Minv, true))), rep.varDelta == null && /* @__PURE__ */ React.createElement("p", { className: "mt-2 text-xs text-ink-500 max-w-[78ch]" }, TRACE_REASONS[rep.reason] || TRACE_REASONS.missing)), /* @__PURE__ */ React.createElement(CalcStep, { n: 5, title: "Standard error" }, /* @__PURE__ */ React.createElement(CalcMathBox, null, "SE = \u221AVar(\u03B4\u0302) = \u221A", fmtNum(shownVar, 8), " = ", fmtNum(test.se, 6), !test.seFromEngine && /* @__PURE__ */ React.createElement(Agree, { ok: relDiff(test.se, engine.se) < 1e-8, engine: fmtNum(engine.se, 6) }))), /* @__PURE__ */ React.createElement(CalcStep, { n: 6, title: "Test, power and minimum detectable effect" }, test.invalidDof ? /* @__PURE__ */ React.createElement("p", { className: "flex items-start gap-1.5 text-[13px] leading-relaxed text-red-800 bg-red-50 border border-red-200 rounded-md px-3 py-2 max-w-[78ch]" }, /* @__PURE__ */ React.createElement(Icon, { name: "alert", className: "w-4 h-4 mt-0.5" }), /* @__PURE__ */ React.createElement("span", null, "The Kenward-Roger approximation in glmmrBase returned no valid degrees of freedom (", dofText(test.dof), ") for this design, so there is no t distribution to test against. The engine still reports power", " ", fmtNum(engine.power, 6), ", which can\u2019t be reproduced. Treat this design\u2019s result with caution, or choose another estimator.")) : /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(CalcText, null, "A two-sided test at \u03B1 = ", fmtNum(t.alpha), test.dist === "z" ? " against the normal distribution. Degrees of freedom don\u2019t enter the calculation." : info.dist === "bw" ? `, using a t distribution with cluster-periods minus fixed effects = ${t.nRows} \u2212 ${P} = ${test.dof} degrees of freedom.` : `, using a t distribution with ${fmtNum(test.dof, 5)} degrees of freedom from the Kenward-Roger approximation in glmmrBase.`, " ", "The effect is", " ", info.variance === "deff" ? `the ${binary ? "risk" : "rate"} difference ${binary ? "p" : "\u03BC"}\u2081 \u2212 ${binary ? "p" : "\u03BC"}\u2080` : binary ? "the conditional log odds ratio \u03B2\u2081" : count ? "the conditional log rate ratio \u03B2\u2081" : "the treatment coefficient", "."), /* @__PURE__ */ React.createElement(CalcMathBox, null, /* @__PURE__ */ React.createElement("div", null, "critical value ", test.dist === "z" ? /* @__PURE__ */ React.createElement(React.Fragment, null, "z", sub("1\u2212\u03B1/2")) : /* @__PURE__ */ React.createElement(React.Fragment, null, "t", sub(`${fmtNum(test.dof, 5)}, 1\u2212\u03B1/2`)), " =", " ", fmtNum(test.crit, 6)), /* @__PURE__ */ React.createElement("div", null, "test statistic |\u03B4| / SE = ", fmtNum(Math.abs(t.te), 6), " / ", fmtNum(test.se, 6), " = ", fmtNum(test.stat, 6)), /* @__PURE__ */ React.createElement("div", null, "power = ", test.dist === "z" ? "\u03A6" : "F", "(", fmtNum(test.stat, 6), " \u2212 ", fmtNum(test.crit, 6), ") =", " ", /* @__PURE__ */ React.createElement("span", { className: "font-medium" }, fmtNum(test.power, 6)), /* @__PURE__ */ React.createElement(Agree, { ok: Math.abs(test.power - engine.power) < 1e-7, engine: fmtNum(engine.power, 6) })), /* @__PURE__ */ React.createElement("div", null, "MDE at ", fmtNum(t.targetPower * 100), "% power = (", fmtNum(test.crit, 6), " + ", fmtNum(test.qPower, 6), ") \xD7", " ", fmtNum(test.se, 6), " = ", fmtNum(test.mde, 6), /* @__PURE__ */ React.createElement(Agree, { ok: relDiff(test.mde, engine.mde) < 1e-7, engine: fmtNum(engine.mde, 6) })), /* @__PURE__ */ React.createElement("div", null, "CI half-width = ", fmtNum(test.crit, 6), " \xD7 ", fmtNum(test.se, 6), " = ", fmtNum(test.ciWidth, 6), /* @__PURE__ */ React.createElement(Agree, { ok: relDiff(test.ciWidth, engine.ciWidth) < 1e-7, engine: fmtNum(engine.ciWidth, 6) }))), /* @__PURE__ */ React.createElement("p", { className: "mt-1.5 text-[11px] text-ink-500 max-w-[78ch]" }, test.dist === "z" ? "\u03A6 is the standard normal distribution function" : `F is the t distribution function with ${fmtNum(test.dof, 5)} degrees of freedom`, ". Power counts rejections in the direction of the effect; the opposite tail is ignored, as is standard."))));
+};
+const CalculationPanel = ({
+  designs,
+  activeIndex,
+  cachedResults,
+  isStale,
+  isCalculating,
+  cacheVersion,
+  wasmLoaded,
+  estimatorLabel
+}) => {
+  const [open, setOpen] = useState(() => {
+    try {
+      return localStorage.getItem("ct.calcPanelOpen") === "1";
+    } catch (e) {
+      return false;
+    }
+  });
+  const [trace, setTrace] = useState(null);
+  const [traceKey, setTraceKey] = useState(null);
+  const [error, setError] = useState(null);
+  const [working, setWorking] = useState(false);
+  const [seqView, setSeqView] = useState(0);
+  const [pending, setPending] = useState(null);
+  const [confirmedKey, setConfirmedKey] = useState(null);
+  const latest = useRef({});
+  latest.current = { designs, estimatorLabel };
+  const toggle = () => setOpen((o) => {
+    try {
+      localStorage.setItem("ct.calcPanelOpen", o ? "0" : "1");
+    } catch (e) {
+    }
+    return !o;
+  });
+  useEffect(() => {
+    if (!open || isStale || isCalculating || !wasmLoaded) return void 0;
+    const key = `${cacheVersion}:${activeIndex}`;
+    if (key === traceKey) return void 0;
+    const entry = latest.current.designs[activeIndex];
+    if (key !== confirmedKey) {
+      const rows = MathsInterface._generateDataMatrix(entry.design, entry.options).length;
+      if (rows > TRACE_CONFIRM_ROWS) {
+        setPending({ key, rows });
+        return void 0;
+      }
+    }
+    setPending(null);
+    let cancelled = false;
+    setWorking(true);
+    const id = setTimeout(() => {
+      try {
+        const t = MathsInterface.getCalculationTrace(entry.design, entry.options, `design-${activeIndex}`);
+        if (cancelled) return;
+        setTrace({ ...t, designName: entry.name, estimatorLabel: latest.current.estimatorLabel });
+        setError(null);
+      } catch (err) {
+        console.error("Calculation trace failed:", err);
+        if (cancelled) return;
+        setTrace(null);
+        setError(err && err.message ? err.message : String(err));
+      }
+      setTraceKey(key);
+      setWorking(false);
+    }, 30);
+    return () => {
+      cancelled = true;
+      clearTimeout(id);
+      setWorking(false);
+    };
+  }, [open, isStale, isCalculating, wasmLoaded, cacheVersion, activeIndex, traceKey, confirmedKey]);
+  const showPending = pending && !isStale && pending.key === `${cacheVersion}:${activeIndex}`;
+  const res = cachedResults[activeIndex] || {};
+  const name = designs[activeIndex] ? designs[activeIndex].name : "";
+  const summary = isStale ? "Out of date \xB7 recalculate to update" : `${name} \xB7 ${estimatorLabel} \xB7 SE ${res.se} \u2192 power ${res.power}`;
+  const status = trace ? traceStatus(trace.checks) : null;
+  const pill = status ? STATUS_PILL[status] : null;
+  return /* @__PURE__ */ React.createElement("section", { className: "panel" }, /* @__PURE__ */ React.createElement("h2", { className: "m-0" }, /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      type: "button",
+      onClick: toggle,
+      "aria-expanded": open,
+      "aria-controls": "calculation-panel-body",
+      className: `w-full flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 text-left transition-colors hover:bg-ink-50 ${open ? "border-b border-ink-100 rounded-t-lg" : "rounded-lg"}`
+    },
+    /* @__PURE__ */ React.createElement(Icon, { name: "chevron", className: `w-4 h-4 text-ink-500 transition-transform ${open ? "rotate-90" : ""}` }),
+    /* @__PURE__ */ React.createElement("span", { className: "panel-title" }, "Calculation"),
+    /* @__PURE__ */ React.createElement("span", { className: "text-xs font-normal text-ink-500" }, "How the result was produced, step by step"),
+    /* @__PURE__ */ React.createElement("span", { className: `sm:ml-auto font-mono text-xs font-normal tabular-nums ${isStale ? "text-ink-400" : "text-ink-700"}` }, summary)
+  )), open && /* @__PURE__ */ React.createElement("div", { id: "calculation-panel-body" }, isStale && /* @__PURE__ */ React.createElement("p", { className: "flex items-center gap-1.5 px-4 py-2 border-b border-amber-100 text-xs text-amber-800 bg-amber-50" }, /* @__PURE__ */ React.createElement(Icon, { name: "alert", className: "w-3.5 h-3.5" }), trace ? "These steps describe the last calculation. Recalculate to update them." : "Recalculate to see how the result is produced."), error && /* @__PURE__ */ React.createElement("p", { className: "flex items-center gap-1.5 px-4 py-3 text-sm text-red-800 bg-red-50" }, /* @__PURE__ */ React.createElement(Icon, { name: "alert", className: "w-4 h-4" }), "The calculation steps couldn\u2019t be produced for this design: ", error), showPending && /* @__PURE__ */ React.createElement("div", { className: "flex flex-wrap items-center justify-between gap-3 px-4 py-4" }, /* @__PURE__ */ React.createElement("p", { className: "text-[13px] leading-relaxed text-ink-600 max-w-[70ch]" }, "This design has ", pending.rows.toLocaleString(), " cluster-periods. Showing the calculation means copying a", " ", pending.rows.toLocaleString(), " \xD7 ", pending.rows.toLocaleString(), " covariance matrix out of the engine, which can take several seconds, and the page won\u2019t respond until it finishes."), /* @__PURE__ */ React.createElement("button", { type: "button", className: "btn btn-secondary", onClick: () => setConfirmedKey(pending.key) }, "Show the calculation")), !trace && !error && !isStale && !showPending && /* @__PURE__ */ React.createElement("p", { className: "px-4 py-6 text-sm text-ink-500" }, wasmLoaded ? "Working\u2026" : "Loading the statistics engine\u2026"), trace && !showPending && /* @__PURE__ */ React.createElement("div", { className: `transition-opacity ${isStale || working ? "opacity-50" : ""}` }, /* @__PURE__ */ React.createElement("div", { className: "flex flex-wrap items-center gap-x-3 gap-y-2 px-4 pt-3" }, /* @__PURE__ */ React.createElement("span", { className: "text-xs text-ink-600" }, trace.designName, " \xB7 ", trace.estimatorLabel), /* @__PURE__ */ React.createElement("span", { className: `inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-[11px] font-medium ${pill.cls}` }, /* @__PURE__ */ React.createElement(Icon, { name: pill.icon, className: "w-3 h-3" }), pill.text)), /* @__PURE__ */ React.createElement(CalculationSteps, { t: trace, seqView, setSeqView }), /* @__PURE__ */ React.createElement("div", { className: "px-4 py-3 border-t border-ink-100 bg-ink-50 rounded-b-lg" }, /* @__PURE__ */ React.createElement("h3", { className: "text-xs font-semibold text-ink-900 mb-2" }, "Checks run in your browser"), /* @__PURE__ */ React.createElement("ul", { className: "grid gap-x-6 gap-y-2 md:grid-cols-2" }, trace.checks.map((c, i) => /* @__PURE__ */ React.createElement("li", { key: i, className: "flex gap-2 text-xs" }, /* @__PURE__ */ React.createElement(
+    Icon,
+    {
+      name: c.status === "ok" ? "check" : c.status === "fail" ? "alert" : "minus",
+      className: `w-3.5 h-3.5 mt-0.5 ${c.status === "ok" ? "text-accent-700" : c.status === "fail" ? "text-red-600" : "text-ink-400"}`
+    }
+  ), /* @__PURE__ */ React.createElement("span", { className: "min-w-0" }, /* @__PURE__ */ React.createElement("span", { className: `font-medium ${c.status === "fail" ? "text-red-800" : "text-ink-800"}` }, c.label), /* @__PURE__ */ React.createElement("span", { className: "block text-ink-600 leading-snug" }, c.detail))))), /* @__PURE__ */ React.createElement("p", { className: "mt-3 text-[11px] leading-snug text-ink-500 max-w-[90ch]" }, "These checks use only the matrices the engine exports and JavaScript arithmetic, not the engine\u2019s own linear algebra. For an independent check in R, export the verification bundle.", " ", /* @__PURE__ */ React.createElement("a", { href: "/methods/verification.html", className: "text-accent-700 hover:underline underline-offset-2" }, "How verification works"))))));
+};
 const PowerWarning = ({ warning, selectedEstimator, designName }) => {
   if (!warning) return null;
   const estimatorLabels = {
@@ -1714,6 +2677,10 @@ const PlotArea = ({
           );
         } else if (xAxis === "meanClusterSize") {
           modifiedOptions.meanClusterSize = xVal;
+          if (modifiedOptions.sampleSizeMode === "exact") {
+            modifiedOptions.sampleSizeMode = "fixed";
+            modifiedOptions.cvClusterSize = 0;
+          }
           const tempId = `_plot_line_${idx}`;
           result = MathsInterface.calculateResults(d.design, modifiedOptions, tempId);
         } else {
@@ -1755,7 +2722,7 @@ const PlotArea = ({
     );
     const zValues = totalClusters.map((clusters) => {
       return clusterSizes.map((size) => {
-        const modifiedOptions = { ...d.options, meanClusterSize: size };
+        const modifiedOptions = d.options.sampleSizeMode === "exact" ? { ...d.options, meanClusterSize: size, sampleSizeMode: "fixed", cvClusterSize: 0 } : { ...d.options, meanClusterSize: size };
         const result = MathsInterface.calculateResultsWithClusters(
           d.design,
           modifiedOptions,
@@ -2960,7 +3927,19 @@ function App() {
       isCalculating,
       cacheVersion
     }
-  )))), cellEditor && /* @__PURE__ */ React.createElement(
+  ))), /* @__PURE__ */ React.createElement("div", { className: "mt-5" }, /* @__PURE__ */ React.createElement(
+    CalculationPanel,
+    {
+      designs,
+      activeIndex,
+      cachedResults,
+      isStale: resultsStale,
+      isCalculating,
+      cacheVersion,
+      wasmLoaded,
+      estimatorLabel: (getEstimators(options2.outcomeType).find((e) => e.key === options2.estimator) || {}).label || options2.estimator
+    }
+  ))), cellEditor && /* @__PURE__ */ React.createElement(
     CellSizeEditor,
     {
       x: cellEditor.x,

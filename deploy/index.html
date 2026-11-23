@@ -19,7 +19,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,600&family=Source+Sans+3:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/landing.css?v=4">
+    <link rel="stylesheet" href="/landing.css?v=12">
 
     <script type="application/ld+json">
     {
@@ -255,7 +255,86 @@
         <a href="/methods/estimators.html">Methods</a>
         <a href="/methods/verification.html">Verification</a>
       </div>
+
+      <!-- Contact: the address is assembled by contact.js only after a click. -->
+      <details class="ct-tools ct-tools--contact" id="ct-contact-menu">
+        <summary class="ct-tools__toggle">
+          Contact
+          <svg class="ct-tools__chev" viewBox="0 0 12 12" width="12" height="12" aria-hidden="true">
+            <path d="M3 4.5 6 7.5 9 4.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </summary>
+        <div class="ct-tools__panel ct-contact-panel">
+          <p class="ct-contact-panel__title">Planning a cluster trial?</p>
+          <p class="ct-contact-panel__text">
+            For help with a trial design, a sample size calculation for a grant or protocol,
+            or to discuss a collaboration, get in touch. Questions, bug reports and feature
+            requests are welcome too.
+          </p>
+          <div class="ct-contact__action" data-ct-contact data-u="nostaw.i.s" data-d="ku.ca.mahb">
+            <button type="button" class="ct-contact__btn">Show email address</button>
+            <noscript><span class="ct-contact__note">Enable JavaScript to see the address.</span></noscript>
+          </div>
+        </div>
+      </details>
+
+      <!-- Tool switcher: links stay in the served HTML; the script below only
+           adds close-on-outside-click and Escape to the native disclosures. -->
+      <details class="ct-tools" id="ct-tools">
+        <summary class="ct-tools__toggle">
+          More tools
+          <svg class="ct-tools__chev" viewBox="0 0 12 12" width="12" height="12" aria-hidden="true">
+            <path d="M3 4.5 6 7.5 9 4.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </summary>
+        <div class="ct-tools__panel">
+          <ul class="ct-tools__list">
+            <li>
+              <a class="ct-tools__item" href="/" aria-current="page">
+                <span class="ct-tools__name">Cluster trial calculator</span>
+                <span class="ct-tools__here">Current</span>
+                <span class="ct-tools__desc">Power and sample size for parallel, stepped-wedge and other cluster designs</span>
+              </a>
+            </li>
+            <li>
+              <a class="ct-tools__item" href="/spatial">
+                <span class="ct-tools__name">Spatial trial design</span>
+                <span class="ct-tools__tag">Experimental</span>
+                <span class="ct-tools__desc">Trials where clusters are defined by geography</span>
+              </a>
+            </li>
+            <li>
+              <a class="ct-tools__item" href="/adaptive">
+                <span class="ct-tools__name">Adaptive cluster design</span>
+                <span class="ct-tools__tag">Experimental</span>
+                <span class="ct-tools__desc">Cluster trial designs that adapt as data accrue</span>
+              </a>
+            </li>
+          </ul>
+          <p class="ct-tools__note">
+            Experimental tools are still in development. Features and results may change,
+            so check important calculations independently.
+          </p>
+        </div>
+      </details>
     </nav>
+    <script>
+      (function () {
+        var menus = document.querySelectorAll(".ct-nav details.ct-tools");
+        Array.prototype.forEach.call(menus, function (menu) {
+          document.addEventListener("click", function (e) {
+            // isConnected: ignore clicks on nodes removed by the handler (e.g. the reveal button)
+            if (menu.open && e.target.isConnected && !menu.contains(e.target)) menu.open = false;
+          });
+          menu.addEventListener("keydown", function (e) {
+            if (e.key === "Escape" && menu.open) {
+              menu.open = false;
+              menu.querySelector("summary").focus();
+            }
+          });
+        });
+      })();
+    </script>
 
     <div id="root"></div>
 
@@ -315,6 +394,17 @@
             <p>ICC, CAC and IAC, and why binary outcomes constrain what is achievable.</p>
           </li>
         </ul>
+
+        <aside class="ct-contact" id="contact" aria-labelledby="contact-h">
+          <div class="ct-contact__text">
+            <h3 id="contact-h">Planning a cluster trial?</h3>
+            <p>For help with a trial design, a sample size calculation for a grant or protocol, or to discuss a collaboration, get in touch. Questions, bug reports and feature requests are welcome too.</p>
+          </div>
+          <div class="ct-contact__action" data-ct-contact data-u="nostaw.i.s" data-d="ku.ca.mahb">
+            <button type="button" class="ct-contact__btn">Show email address</button>
+            <noscript><span class="ct-contact__note">Enable JavaScript to see the address.</span></noscript>
+          </div>
+        </aside>
       </div>
     </section>
 
@@ -325,7 +415,13 @@
         &nbsp;&middot;&nbsp; <a href="/guide.html">Getting started</a>
         &nbsp;&middot;&nbsp; <a href="/methods/verification.html">Verification bundle</a>
         &nbsp;&middot;&nbsp; <a href="https://github.com/samuel-watson/ClusterApp2">Source code</a>
+        &nbsp;&middot;&nbsp; <a href="#contact">Contact</a>
         &nbsp;&middot;&nbsp; Built at the University of Birmingham.
+        <p class="ct-foot__tools">
+          Experimental tools:
+          <a href="/spatial">Spatial trial design</a>
+          &nbsp;&middot;&nbsp; <a href="/adaptive">Adaptive cluster design</a>
+        </p>
       </div>
     </footer>
 
@@ -335,9 +431,10 @@
     <!-- Shared utilities exposed to global scope -->
     <script src="wasmLoader.global.js?v=5"></script>
     <script src="reportGenerator.js?v=2"></script>
-    <!-- Main application (JSX transformed by Babel) 
+    <!-- Main application (JSX transformed by Babel)
     <script type="text/babel" src="App.jsx" async></script>-->
-    <script src="app.js?v=9" defer></script>
+    <script src="app.js?v=10" defer></script>
+    <script src="contact.js?v=1" defer></script>
 
     <script>
       // Error handling

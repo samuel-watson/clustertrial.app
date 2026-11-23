@@ -4669,10 +4669,6 @@ const teInfo = getTreatmentEffectInfo(options.outcomeType);
             <h1 className="font-display text-[1.75rem] leading-tight font-semibold tracking-[-0.012em] text-ink-900">
               Cluster trial design tool
             </h1>
-            <p className="mt-1 text-sm text-ink-600">
-              Compare up to 3 designs. Click cells to cycle status. Right-click
-              headers for options.
-            </p>
           </div>
           <div className="flex gap-2">
             <button

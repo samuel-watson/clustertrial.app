@@ -83,7 +83,18 @@ def nav(current):
             '<a class="nav__cta" href="/">Open the calculator</a></nav>')
 
 
-FOOTER = """<footer class="footer"><div class="wrap"><div class="footer__cols">
+FOOTER = """<footer class="footer"><div class="wrap">
+<aside class="ct-contact" id="contact" aria-labelledby="contact-h">
+  <div class="ct-contact__text">
+    <h3 id="contact-h">Planning a cluster trial?</h3>
+    <p>For help with a trial design, a sample size calculation for a grant or protocol, or to discuss a collaboration, get in touch. Questions, bug reports and feature requests are welcome too.</p>
+  </div>
+  <div class="ct-contact__action" data-ct-contact data-u="nostaw.i.s" data-d="ku.ca.mahb">
+    <button type="button" class="ct-contact__btn">Show email address</button>
+    <noscript><span class="ct-contact__note">Enable JavaScript to see the address.</span></noscript>
+  </div>
+</aside>
+<div class="footer__cols">
 <div><h4>Designs</h4><ul>
 <li><a href="/designs/stepped-wedge.html">Stepped wedge</a></li>
 </ul></div>
@@ -96,8 +107,13 @@ FOOTER = """<footer class="footer"><div class="wrap"><div class="footer__cols">
 <li><a href="/features.html">Features</a></li>
 <li><a href="/guide.html">Getting started</a></li>
 </ul></div>
+<div><h4>Experimental tools</h4><ul>
+<li><a href="/spatial">Spatial trial design</a></li>
+<li><a href="/adaptive">Adaptive cluster design</a></li>
+</ul></div>
 <div><h4>Project</h4><ul>
 <li><a href="https://github.com/samuel-watson/ClusterApp2">Source code</a></li>
+<li><a href="#contact">Contact</a></li>
 </ul></div>
 </div>
 <div class="footer__base">
@@ -121,7 +137,7 @@ HEAD = """<!DOCTYPE html>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=Source+Sans+3:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/site.css?v=4">
+<link rel="stylesheet" href="/site.css?v=5">
 {math}
 {jsonld}
 </head>
@@ -158,7 +174,7 @@ def page(path, title, desc, body, rail=None, math=True):
         jsonld=jsonld_article(title, desc, path),
         nav=nav(path),
     )
-    html += f'<div class="{cls}">{r}<main class="prose">{body}</main></div></div>{FOOTER}</body></html>'
+    html += f'<div class="{cls}">{r}<main class="prose">{body}</main></div></div>{FOOTER}<script src="/contact.js?v=1" defer></script></body></html>'
     dest = os.path.join(OUT, path.lstrip("/"))
     os.makedirs(os.path.dirname(dest), exist_ok=True)
     with open(dest, "w") as f:

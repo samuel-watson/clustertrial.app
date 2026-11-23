@@ -438,3 +438,59 @@ td code { background: none; border: none; padding: 0; }
 
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
 input, textarea { caret-color: var(--accent); }
+
+/* ---------- contact box ---------- */
+
+.ct-contact {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem 2.5rem;
+  margin: 2.5rem 0 0;
+  padding: 1.4rem 1.6rem;
+  background: var(--ct-contact-bg, #fff);
+  border: 1px solid var(--rule);
+  border-left: 4px solid var(--arm);
+  border-radius: 4px;
+}
+.ct-contact__text { flex: 1 1 28rem; min-width: 0; }
+.ct-contact h3 {
+  font-family: var(--display);
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: var(--ink);
+  margin: 0 0 0.35rem;
+}
+.ct-contact p { margin: 0; font-size: 0.98rem; line-height: 1.55; color: var(--muted); max-width: 64ch; }
+.ct-contact__action { display: flex; align-items: center; flex-wrap: wrap; gap: 0.6rem; flex: 0 0 auto; }
+.ct-contact__btn,
+.ct-contact__copy {
+  font: 500 0.95rem/1 var(--body);
+  border-radius: 4px;
+  cursor: pointer;
+  padding: 0.65rem 1.1rem;
+}
+.ct-contact__btn { background: var(--accent); color: #fff; border: 1px solid var(--accent); }
+.ct-contact__btn:hover { background: var(--accent-dark); border-color: var(--accent-dark); }
+.ct-contact__copy {
+  background: transparent;
+  color: var(--ink);
+  border: 1px solid var(--rule-strong, #c4c9cf);
+  padding: 0.5rem 0.8rem;
+  font-size: 0.85rem;
+}
+.ct-contact__copy:hover { border-color: var(--faint); }
+.ct-contact__btn:focus-visible,
+.ct-contact__copy:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+a.ct-contact__addr {
+  font-family: var(--mono);
+  font-size: 0.98rem;
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  overflow-wrap: anywhere;
+}
+.ct-contact__note { font-size: 0.85rem; color: var(--faint); }
+.footer .ct-contact { margin: 0 0 2.6rem; --ct-contact-bg: var(--paper); }
+.footer a.ct-contact__addr { color: var(--accent); }

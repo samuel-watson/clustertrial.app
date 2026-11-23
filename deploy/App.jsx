@@ -2232,7 +2232,7 @@ const Icon = ({ name, className = "w-4 h-4" }) => (
   </svg>
 );
 
-const SEQ_HEADER_W = 84; // cluster-count input + row label
+const SEQ_HEADER_W = 104; // cluster-count input + row label menu button
 
 const NumericInput = ({ value, onChange, min, max, step, className }) => {
   const [raw, setRaw] = useState(String(value));
@@ -2295,10 +2295,34 @@ const ContextMenu = ({ x, y, items, onClose }) => {
     };
   }, [onClose]);
 
+  // Move focus into the menu so it works from the keyboard, and hand it back
+  // to whatever opened it (if that is still on the page) when it closes.
+  useEffect(() => {
+    const opener = document.activeElement;
+    menuRef.current
+      ?.querySelector('[role="menuitem"]:not(:disabled)')
+      ?.focus({ preventScroll: true });
+    return () => {
+      if (opener?.isConnected) opener.focus({ preventScroll: true });
+    };
+  }, []);
+
+  const handleKeyDown = (e) => {
+    if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+    e.preventDefault();
+    const enabled = [
+      ...menuRef.current.querySelectorAll('[role="menuitem"]:not(:disabled)'),
+    ];
+    const at = enabled.indexOf(document.activeElement);
+    const step = e.key === "ArrowDown" ? 1 : -1;
+    enabled[(at + step + enabled.length) % enabled.length]?.focus();
+  };
+
   return (
     <div
       ref={menuRef}
       role="menu"
+      onKeyDown={handleKeyDown}
       className="fixed bg-white rounded-md shadow-pop border border-ink-200 py-1 z-50 min-w-[180px]"
       style={clampToViewport(
         x,
@@ -2400,39 +2424,81 @@ const CellSizeEditor = ({ x, y, initial, onSave, onClose }) => {
   );
 };
 
-const InsertButton = ({ onClick, className = "" }) => (
+// Where to open a header menu: at the pointer for a right-click, under the
+// label for a click or a key press (which carry no useful pointer position).
+const menuAnchor = (e) => {
+  if (e.type === "contextmenu") return { x: e.clientX, y: e.clientY };
+  const r = e.currentTarget.getBoundingClientRect();
+  return { x: r.left, y: r.bottom + 4 };
+};
+
+// Grid chrome that helps editing but does not belong in the exported PNG.
+const EXPORT_IGNORE = { "data-export-ignore": "" };
+
+// Faint at rest so the insert points can be found; full strength on hover.
+const InsertButton = ({ onClick, label, className = "" }) => (
   <button
     onClick={onClick}
     className={`
       flex items-center justify-center
       bg-accent-600 text-white rounded-full
-      opacity-0 group-hover:opacity-100 focus:opacity-100
+      opacity-30 group-hover:opacity-100 hover:opacity-100 focus:opacity-100
       transition-opacity duration-150
       hover:bg-accent-700
       focus:outline-none focus:ring-2 focus:ring-accent-300 focus:ring-offset-1
       w-4 h-4
       ${className}
     `}
-    aria-label="Insert"
+    aria-label={label}
+    title={label}
+    {...EXPORT_IGNORE}
   >
     <Icon name="plus" className="w-3 h-3" />
   </button>
 );
 
-const PeriodHeader = ({ index, onContextMenu, cellSize }) => (
-  <div
-    className="flex items-center justify-center font-mono text-xs text-ink-500
-               cursor-context-menu select-none hover:bg-ink-100 hover:text-ink-900 rounded transition-colors"
-    style={{ width: cellSize, height: 32 }}
+// A row or column label that opens its options menu on click, Enter/Space or
+// right-click. The chevron marks it as a menu; it is left out of the PNG.
+const HeaderMenuButton = ({ label, ariaLabel, onOpenMenu, className = "", style }) => (
+  <button
+    type="button"
+    aria-haspopup="menu"
+    aria-label={ariaLabel}
+    title={`${ariaLabel} (insert, fill or delete)`}
+    onClick={onOpenMenu}
     onContextMenu={(e) => {
       e.preventDefault();
-      onContextMenu(e, index);
+      onOpenMenu(e);
     }}
-    title="Right-click for options"
+    className={`group/hdr flex items-center justify-center gap-0.5 rounded font-mono text-xs
+                text-ink-600 select-none transition-colors
+                hover:bg-ink-200/70 hover:text-ink-900 aria-expanded:bg-ink-200/70
+                focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 ${className}`}
+    style={style}
   >
-    T{index}
-  </div>
+    {label}
+    <span {...EXPORT_IGNORE} className="flex">
+      <Icon
+        name="chevron"
+        className="w-2.5 h-2.5 rotate-90 text-ink-400 group-hover/hdr:text-ink-700 transition-colors"
+      />
+    </span>
+  </button>
 );
+
+const PeriodHeader = ({ index, onContextMenu, cellSize }) => (
+  <HeaderMenuButton
+    label={`T${index}`}
+    ariaLabel={`Period T${index} options`}
+    onOpenMenu={(e) => onContextMenu(e, index)}
+    style={{ width: cellSize, height: 32 }}
+  />
+);
+
+// Widths shared by the sequence headers and the "Clusters" column heading
+// above them, so the heading sits exactly over the inputs.
+const SEQ_INPUT_W = "w-12";
+const SEQ_LABEL_W = "w-10";
 
 const SequenceHeader = ({
   index,
@@ -2442,7 +2508,7 @@ const SequenceHeader = ({
   cellSize,
 }) => (
   <div
-    className="flex items-center justify-end gap-2 pr-2"
+    className="flex items-center justify-end gap-1.5 pr-1"
     style={{ width: SEQ_HEADER_W, height: cellSize }}
   >
     <input
@@ -2450,20 +2516,70 @@ const SequenceHeader = ({
       min="1"
       value={clusters}
       onChange={(e) => onClustersChange(index, parseInt(e.target.value) || 1)}
-      className="field field-sm w-12 text-center"
-      title="Number of clusters"
+      className={`field field-sm ${SEQ_INPUT_W} text-center`}
+      aria-label={`Clusters in sequence S${index + 1}`}
+      title={`Number of clusters in sequence S${index + 1}`}
     />
-    <div
-      className="font-mono text-xs text-ink-500 whitespace-nowrap cursor-context-menu select-none
-                 hover:bg-ink-100 hover:text-ink-900 rounded px-1 py-0.5 transition-colors"
-      onContextMenu={(e) => {
-        e.preventDefault();
-        onContextMenu(e, index);
-      }}
-      title="Right-click for options"
+    <HeaderMenuButton
+      label={`S${index + 1}`}
+      ariaLabel={`Sequence S${index + 1} options`}
+      onOpenMenu={(e) => onContextMenu(e, index)}
+      className={`${SEQ_LABEL_W} h-7`}
+    />
+  </div>
+);
+
+// Column heading over the per-sequence cluster inputs.
+const ClustersColumnHeading = () => (
+  <div
+    className="flex items-end justify-end gap-1.5 pr-1 pb-1.5"
+    style={{ width: SEQ_HEADER_W }}
+  >
+    <span
+      className={`${SEQ_INPUT_W} text-center text-[11px] font-semibold leading-none text-ink-600`}
+      title="Number of clusters in each sequence"
     >
-      S{index + 1}
-    </div>
+      Clusters
+    </span>
+    <span className={SEQ_LABEL_W} />
+  </div>
+);
+
+// Dashed lanes along the right and bottom edges of the grid: always visible
+// places to add a period or a sequence.
+const addLaneClass = `flex items-center justify-center gap-1 rounded-md border-[1.5px] border-dashed
+  border-ink-300 bg-white/60 text-[11px] font-medium text-ink-500 transition-colors
+  hover:border-accent-500 hover:bg-accent-50 hover:text-accent-700
+  focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-500`;
+
+const AddPeriodLane = ({ onClick }) => (
+  <button
+    type="button"
+    onClick={onClick}
+    className={`${addLaneClass} flex-col w-11 my-2 ml-1 self-stretch`}
+    aria-label="Add a period at the end"
+    title="Add a period at the end"
+    {...EXPORT_IGNORE}
+  >
+    <Icon name="plus" className="w-3.5 h-3.5" />
+    Period
+  </button>
+);
+
+const AddSequenceLane = ({ onClick, numPeriods, cellSize }) => (
+  <div className="flex" {...EXPORT_IGNORE}>
+    <div style={{ width: SEQ_HEADER_W + 8 }} />
+    <button
+      type="button"
+      onClick={onClick}
+      className={`${addLaneClass} h-8 mt-0.5`}
+      style={{ width: Math.max(numPeriods * (cellSize + 8) - 8, 96) }}
+      aria-label="Add a sequence at the end"
+      title="Add a sequence at the end"
+    >
+      <Icon name="plus" className="w-3.5 h-3.5" />
+      Sequence
+    </button>
   </div>
 );
 
@@ -2479,6 +2595,21 @@ const DesignCellComponent = ({
 }) => {
   const config = statusConfig[cell.status];
   const scaledSize = cellSize * (0.4 + 0.6 * scale); // Min 40% size
+  const next =
+    statusConfig[
+      statusCycle[(statusCycle.indexOf(cell.status) + 1) % statusCycle.length]
+    ];
+  const canSetSize =
+    sampleSizeMode === "exact" && cell.status !== CellStatus.NOT_ENROLLED;
+  const description = [
+    `${config.label}${
+      sampleSizeMode === "exact" && cell.sampleSize ? ` (n=${cell.sampleSize})` : ""
+    }${scale < 1 ? ` (weight: ${(scale * 100).toFixed(0)}%)` : ""}.`,
+    `Click to make ${next.label.toLowerCase()}.`,
+    canSetSize ? "Right-click to set its cluster-period size." : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   return (
     <div
@@ -2490,7 +2621,7 @@ const DesignCellComponent = ({
         onContextMenu={(e) => onContextMenu(e, rowIndex, colIndex)}
         className={`
           ${config.bg} ${config.border} ${config.text} ${config.hoverBg}
-          border-[1.5px] rounded-md transition-[width,height] duration-300 ease-out
+          border-[1.5px] rounded-md cursor-pointer transition-[width,height] duration-300 ease-out
           focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:ring-offset-1
           flex flex-col items-center justify-center
         `}
@@ -2499,15 +2630,8 @@ const DesignCellComponent = ({
           height: scaledSize,
           fontSize: `${Math.max(0.6, scale) * 100}%`,
         }}
-        title={`${config.label}${
-          sampleSizeMode === "exact" && cell.sampleSize
-            ? ` (n=${cell.sampleSize})`
-            : ""
-        }${scale < 1 ? ` (weight: ${(scale * 100).toFixed(0)}%)` : ""}${
-          sampleSizeMode === "exact" && cell.status !== CellStatus.NOT_ENROLLED
-            ? " — Right-click to set size"
-            : ""
-        }`}
+        title={description}
+        aria-label={`Sequence S${rowIndex + 1}, period T${colIndex}: ${description}`}
       >
         {sampleSizeMode === "exact" &&
           cell.sampleSize !== null &&
@@ -4381,8 +4505,7 @@ useEffect(() => {
   const handlePeriodContextMenu = useCallback(
     (e, index) => {
       setContextMenu({
-        x: e.clientX,
-        y: e.clientY,
+        ...menuAnchor(e),
         items: [
           {
             label: "Insert period before",
@@ -4428,8 +4551,7 @@ useEffect(() => {
   const handleSequenceContextMenu = useCallback(
     (e, index) => {
       setContextMenu({
-        x: e.clientX,
-        y: e.clientY,
+        ...menuAnchor(e),
         items: [
           {
             label: "Insert sequence above",
@@ -4525,6 +4647,12 @@ useEffect(() => {
         backgroundColor: "#ffffff",
         scale: 2,
         logging: false,
+        // Leave out editing chrome (insert buttons, add lanes, menu chevrons),
+        // and collapse the space it took rather than leave blank strips.
+        onclone: (doc) =>
+          doc
+            .querySelectorAll("[data-export-ignore]")
+            .forEach((el) => (el.style.display = "none")),
       });
 
       const link = document.createElement("a");
@@ -4659,6 +4787,9 @@ const teInfo = getTreatmentEffectInfo(options.outcomeType);
   );
 
   const totalClusters = design.getTotalClusters();
+  const clustersPerSeq = grid.map((_, i) => design.getClusters(i));
+  const minClustersPerSeq = Math.min(...clustersPerSeq);
+  const maxClustersPerSeq = Math.max(...clustersPerSeq);
 
   return (
     <div className="min-h-screen bg-paper">
@@ -4872,14 +5003,30 @@ const teInfo = getTreatmentEffectInfo(options.outcomeType);
               </div>
 
               {/* Grid canvas */}
-              <div className="canvas flex-1 flex items-center overflow-x-auto min-h-[220px]">
+              <div className="canvas flex-1 flex flex-col overflow-x-auto min-h-[220px]">
+                {/* How to edit. Outside designGridRef, so not in the PNG. */}
+                <p className="flex items-start gap-1.5 px-4 pt-3 text-xs leading-snug text-ink-600">
+                  <Icon name="info" className="w-3.5 h-3.5 mt-px text-ink-400" />
+                  <span>
+                    Click a cell to change its arm. Click a sequence or period
+                    label for more options, or use{" "}
+                    <span className="inline-flex align-[-2px] items-center justify-center w-3.5 h-3.5 rounded-full bg-accent-600 text-white">
+                      <Icon name="plus" className="w-2.5 h-2.5" />
+                    </span>{" "}
+                    to insert one.
+                    {options.sampleSizeMode === "exact" &&
+                      " Right-click a cell to set its cluster-period size."}
+                  </span>
+                </p>
+                <div className="flex-1 flex items-center">
                 <div ref={designGridRef} className="inline-block p-5 mx-auto">
                   {/* Column headers */}
                   <div className="flex items-center mb-1 group">
-                    <div style={{ width: SEQ_HEADER_W }} />
+                    <ClustersColumnHeading />
                     <div className="flex items-center">
                       <div className="w-2 flex justify-center">
                         <InsertButton
+                          label="Insert a period before T0"
                           onClick={() =>
                             updateActiveDesign((e) => e.design.insertPeriod(0))
                           }
@@ -4896,6 +5043,7 @@ const teInfo = getTreatmentEffectInfo(options.outcomeType);
                             />
                             <div className="w-2 flex justify-center">
                               <InsertButton
+                                label={`Insert a period after T${j}`}
                                 onClick={() =>
                                   updateActiveDesign((e) =>
                                     e.design.insertPeriod(j + 1)
@@ -4908,7 +5056,8 @@ const teInfo = getTreatmentEffectInfo(options.outcomeType);
                     </div>
                   </div>
 
-                  {/* Grid rows */}
+                  {/* Grid rows, with the add-period lane down the right edge */}
+                  <div className="flex items-stretch">
                   <div className="flex flex-col">
                     <div className="flex items-center h-2 group">
                       <div
@@ -4916,6 +5065,7 @@ const teInfo = getTreatmentEffectInfo(options.outcomeType);
                         className="flex justify-end pr-1"
                       >
                         <InsertButton
+                          label="Insert a sequence above S1"
                           onClick={() =>
                             updateActiveDesign((e) => e.design.insertSequence(0))
                           }
@@ -4970,6 +5120,7 @@ const teInfo = getTreatmentEffectInfo(options.outcomeType);
                             className="flex justify-end pr-1"
                           >
                             <InsertButton
+                              label={`Insert a sequence below S${i + 1}`}
                               onClick={() =>
                                 updateActiveDesign((e) =>
                                   e.design.insertSequence(i + 1)
@@ -4981,20 +5132,50 @@ const teInfo = getTreatmentEffectInfo(options.outcomeType);
                       </React.Fragment>
                     ))}
                   </div>
+                  <AddPeriodLane
+                    onClick={() =>
+                      updateActiveDesign((e) =>
+                        e.design.insertPeriod(e.design.numPeriods)
+                      )
+                    }
+                  />
+                  </div>
+                  <AddSequenceLane
+                    numPeriods={numPeriods}
+                    cellSize={cellSize}
+                    onClick={() =>
+                      updateActiveDesign((e) =>
+                        e.design.insertSequence(e.design.numSequences)
+                      )
+                    }
+                  />
+                </div>
                 </div>
               </div>
 
               {/* Legend and design summary */}
               <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 px-4 py-2.5 border-t border-ink-100 text-xs">
-                <div className="flex flex-wrap gap-4">
-                  {Object.entries(statusConfig).map(([status, config]) => (
-                    <div key={status} className="flex items-center gap-1.5">
-                      <span
-                        className={`w-3 h-3 rounded-[3px] border ${config.bg} ${config.border}`}
-                      />
-                      <span className="text-ink-600">{config.label}</span>
-                    </div>
-                  ))}
+                {/* The legend runs in click order: each click moves a cell one step right. */}
+                <div
+                  className="flex flex-wrap items-center gap-x-2 gap-y-1"
+                  title="Clicking a cell moves it to the next state, then back to control"
+                >
+                  {statusCycle.map((status, k) => {
+                    const config = statusConfig[status];
+                    return (
+                      <React.Fragment key={status}>
+                        {k > 0 && (
+                          <Icon name="chevron" className="w-3 h-3 text-ink-400" />
+                        )}
+                        <span className="flex items-center gap-1.5">
+                          <span
+                            className={`w-3 h-3 rounded-[3px] border ${config.bg} ${config.border}`}
+                          />
+                          <span className="text-ink-600">{config.label}</span>
+                        </span>
+                      </React.Fragment>
+                    );
+                  })}
                 </div>
                 <p className="text-ink-600 tabular-nums">
                   <span className="font-semibold text-ink-900">{numSequences}</span>{" "}
@@ -5005,6 +5186,13 @@ const teInfo = getTreatmentEffectInfo(options.outcomeType);
                   <span className="mx-1.5 text-ink-300">/</span>
                   <span className="font-semibold text-ink-900">{totalClusters}</span>{" "}
                   {totalClusters === 1 ? "cluster" : "clusters"}
+                  <span className="text-ink-500">
+                    {" "}(
+                    {minClustersPerSeq === maxClustersPerSeq
+                      ? minClustersPerSeq
+                      : `${minClustersPerSeq}–${maxClustersPerSeq}`}{" "}
+                    per sequence)
+                  </span>
                 </p>
               </div>
             </section>
@@ -5363,6 +5551,7 @@ const teInfo = getTreatmentEffectInfo(options.outcomeType);
       {/* Context Menu */}
       {contextMenu && (
         <ContextMenu
+          key={`${contextMenu.x},${contextMenu.y}`}
           x={contextMenu.x}
           y={contextMenu.y}
           items={contextMenu.items}

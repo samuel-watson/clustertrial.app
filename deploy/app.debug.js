@@ -1936,7 +1936,7 @@ const Icon = ({ name, className = "w-4 h-4" }) => /* @__PURE__ */ React.createEl
   },
   /* @__PURE__ */ React.createElement("path", { d: ICON_PATHS[name] })
 );
-const SEQ_HEADER_W = 84;
+const SEQ_HEADER_W = 104;
 const NumericInput = ({ value, onChange, min, max, step, className }) => {
   const [raw, setRaw] = useState(String(value));
   const [focused, setFocused] = useState(false);
@@ -1991,11 +1991,31 @@ const ContextMenu = ({ x, y, items, onClose }) => {
       document.removeEventListener("keydown", handleEscape);
     };
   }, [onClose]);
+  useEffect(() => {
+    var _a, _b;
+    const opener = document.activeElement;
+    (_b = (_a = menuRef.current) == null ? void 0 : _a.querySelector('[role="menuitem"]:not(:disabled)')) == null ? void 0 : _b.focus({ preventScroll: true });
+    return () => {
+      if (opener == null ? void 0 : opener.isConnected) opener.focus({ preventScroll: true });
+    };
+  }, []);
+  const handleKeyDown = (e) => {
+    var _a;
+    if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+    e.preventDefault();
+    const enabled = [
+      ...menuRef.current.querySelectorAll('[role="menuitem"]:not(:disabled)')
+    ];
+    const at = enabled.indexOf(document.activeElement);
+    const step = e.key === "ArrowDown" ? 1 : -1;
+    (_a = enabled[(at + step + enabled.length) % enabled.length]) == null ? void 0 : _a.focus();
+  };
   return /* @__PURE__ */ React.createElement(
     "div",
     {
       ref: menuRef,
       role: "menu",
+      onKeyDown: handleKeyDown,
       className: "fixed bg-white rounded-md shadow-pop border border-ink-200 py-1 z-50 min-w-[180px]",
       style: clampToViewport(
         x,
@@ -2074,38 +2094,70 @@ const CellSizeEditor = ({ x, y, initial, onSave, onClose }) => {
     /* @__PURE__ */ React.createElement("p", { className: `mt-1.5 text-xs ${valid ? "text-ink-500" : "text-red-700"}` }, valid ? "Enter to set, Esc to cancel." : "Enter a whole number above 0.")
   );
 };
-const InsertButton = ({ onClick, className = "" }) => /* @__PURE__ */ React.createElement(
+const menuAnchor = (e) => {
+  if (e.type === "contextmenu") return { x: e.clientX, y: e.clientY };
+  const r = e.currentTarget.getBoundingClientRect();
+  return { x: r.left, y: r.bottom + 4 };
+};
+const EXPORT_IGNORE = { "data-export-ignore": "" };
+const InsertButton = ({ onClick, label, className = "" }) => /* @__PURE__ */ React.createElement(
   "button",
   {
     onClick,
     className: `
       flex items-center justify-center
       bg-accent-600 text-white rounded-full
-      opacity-0 group-hover:opacity-100 focus:opacity-100
+      opacity-30 group-hover:opacity-100 hover:opacity-100 focus:opacity-100
       transition-opacity duration-150
       hover:bg-accent-700
       focus:outline-none focus:ring-2 focus:ring-accent-300 focus:ring-offset-1
       w-4 h-4
       ${className}
     `,
-    "aria-label": "Insert"
+    "aria-label": label,
+    title: label,
+    ...EXPORT_IGNORE
   },
   /* @__PURE__ */ React.createElement(Icon, { name: "plus", className: "w-3 h-3" })
 );
-const PeriodHeader = ({ index, onContextMenu, cellSize }) => /* @__PURE__ */ React.createElement(
-  "div",
+const HeaderMenuButton = ({ label, ariaLabel, onOpenMenu, className = "", style }) => /* @__PURE__ */ React.createElement(
+  "button",
   {
-    className: "flex items-center justify-center font-mono text-xs text-ink-500\r\n               cursor-context-menu select-none hover:bg-ink-100 hover:text-ink-900 rounded transition-colors",
-    style: { width: cellSize, height: 32 },
+    type: "button",
+    "aria-haspopup": "menu",
+    "aria-label": ariaLabel,
+    title: `${ariaLabel} (insert, fill or delete)`,
+    onClick: onOpenMenu,
     onContextMenu: (e) => {
       e.preventDefault();
-      onContextMenu(e, index);
+      onOpenMenu(e);
     },
-    title: "Right-click for options"
+    className: `group/hdr flex items-center justify-center gap-0.5 rounded font-mono text-xs
+                text-ink-600 select-none transition-colors
+                hover:bg-ink-200/70 hover:text-ink-900 aria-expanded:bg-ink-200/70
+                focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 ${className}`,
+    style
   },
-  "T",
-  index
+  label,
+  /* @__PURE__ */ React.createElement("span", { ...EXPORT_IGNORE, className: "flex" }, /* @__PURE__ */ React.createElement(
+    Icon,
+    {
+      name: "chevron",
+      className: "w-2.5 h-2.5 rotate-90 text-ink-400 group-hover/hdr:text-ink-700 transition-colors"
+    }
+  ))
 );
+const PeriodHeader = ({ index, onContextMenu, cellSize }) => /* @__PURE__ */ React.createElement(
+  HeaderMenuButton,
+  {
+    label: `T${index}`,
+    ariaLabel: `Period T${index} options`,
+    onOpenMenu: (e) => onContextMenu(e, index),
+    style: { width: cellSize, height: 32 }
+  }
+);
+const SEQ_INPUT_W = "w-12";
+const SEQ_LABEL_W = "w-10";
 const SequenceHeader = ({
   index,
   clusters,
@@ -2115,7 +2167,7 @@ const SequenceHeader = ({
 }) => /* @__PURE__ */ React.createElement(
   "div",
   {
-    className: "flex items-center justify-end gap-2 pr-2",
+    className: "flex items-center justify-end gap-1.5 pr-1",
     style: { width: SEQ_HEADER_W, height: cellSize }
   },
   /* @__PURE__ */ React.createElement(
@@ -2125,24 +2177,67 @@ const SequenceHeader = ({
       min: "1",
       value: clusters,
       onChange: (e) => onClustersChange(index, parseInt(e.target.value) || 1),
-      className: "field field-sm w-12 text-center",
-      title: "Number of clusters"
+      className: `field field-sm ${SEQ_INPUT_W} text-center`,
+      "aria-label": `Clusters in sequence S${index + 1}`,
+      title: `Number of clusters in sequence S${index + 1}`
     }
   ),
   /* @__PURE__ */ React.createElement(
-    "div",
+    HeaderMenuButton,
     {
-      className: "font-mono text-xs text-ink-500 whitespace-nowrap cursor-context-menu select-none\r\n                 hover:bg-ink-100 hover:text-ink-900 rounded px-1 py-0.5 transition-colors",
-      onContextMenu: (e) => {
-        e.preventDefault();
-        onContextMenu(e, index);
-      },
-      title: "Right-click for options"
-    },
-    "S",
-    index + 1
+      label: `S${index + 1}`,
+      ariaLabel: `Sequence S${index + 1} options`,
+      onOpenMenu: (e) => onContextMenu(e, index),
+      className: `${SEQ_LABEL_W} h-7`
+    }
   )
 );
+const ClustersColumnHeading = () => /* @__PURE__ */ React.createElement(
+  "div",
+  {
+    className: "flex items-end justify-end gap-1.5 pr-1 pb-1.5",
+    style: { width: SEQ_HEADER_W }
+  },
+  /* @__PURE__ */ React.createElement(
+    "span",
+    {
+      className: `${SEQ_INPUT_W} text-center text-[11px] font-semibold leading-none text-ink-600`,
+      title: "Number of clusters in each sequence"
+    },
+    "Clusters"
+  ),
+  /* @__PURE__ */ React.createElement("span", { className: SEQ_LABEL_W })
+);
+const addLaneClass = `flex items-center justify-center gap-1 rounded-md border-[1.5px] border-dashed
+  border-ink-300 bg-white/60 text-[11px] font-medium text-ink-500 transition-colors
+  hover:border-accent-500 hover:bg-accent-50 hover:text-accent-700
+  focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-500`;
+const AddPeriodLane = ({ onClick }) => /* @__PURE__ */ React.createElement(
+  "button",
+  {
+    type: "button",
+    onClick,
+    className: `${addLaneClass} flex-col w-11 my-2 ml-1 self-stretch`,
+    "aria-label": "Add a period at the end",
+    title: "Add a period at the end",
+    ...EXPORT_IGNORE
+  },
+  /* @__PURE__ */ React.createElement(Icon, { name: "plus", className: "w-3.5 h-3.5" }),
+  "Period"
+);
+const AddSequenceLane = ({ onClick, numPeriods, cellSize }) => /* @__PURE__ */ React.createElement("div", { className: "flex", ...EXPORT_IGNORE }, /* @__PURE__ */ React.createElement("div", { style: { width: SEQ_HEADER_W + 8 } }), /* @__PURE__ */ React.createElement(
+  "button",
+  {
+    type: "button",
+    onClick,
+    className: `${addLaneClass} h-8 mt-0.5`,
+    style: { width: Math.max(numPeriods * (cellSize + 8) - 8, 96) },
+    "aria-label": "Add a sequence at the end",
+    title: "Add a sequence at the end"
+  },
+  /* @__PURE__ */ React.createElement(Icon, { name: "plus", className: "w-3.5 h-3.5" }),
+  "Sequence"
+));
 const DesignCellComponent = ({
   cell,
   rowIndex,
@@ -2155,6 +2250,13 @@ const DesignCellComponent = ({
 }) => {
   const config = statusConfig[cell.status];
   const scaledSize = cellSize * (0.4 + 0.6 * scale);
+  const next = statusConfig[statusCycle[(statusCycle.indexOf(cell.status) + 1) % statusCycle.length]];
+  const canSetSize = sampleSizeMode === "exact" && cell.status !== CellStatus.NOT_ENROLLED;
+  const description = [
+    `${config.label}${sampleSizeMode === "exact" && cell.sampleSize ? ` (n=${cell.sampleSize})` : ""}${scale < 1 ? ` (weight: ${(scale * 100).toFixed(0)}%)` : ""}.`,
+    `Click to make ${next.label.toLowerCase()}.`,
+    canSetSize ? "Right-click to set its cluster-period size." : ""
+  ].filter(Boolean).join(" ");
   return /* @__PURE__ */ React.createElement(
     "div",
     {
@@ -2168,7 +2270,7 @@ const DesignCellComponent = ({
         onContextMenu: (e) => onContextMenu(e, rowIndex, colIndex),
         className: `
           ${config.bg} ${config.border} ${config.text} ${config.hoverBg}
-          border-[1.5px] rounded-md transition-[width,height] duration-300 ease-out
+          border-[1.5px] rounded-md cursor-pointer transition-[width,height] duration-300 ease-out
           focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:ring-offset-1
           flex flex-col items-center justify-center
         `,
@@ -2177,7 +2279,8 @@ const DesignCellComponent = ({
           height: scaledSize,
           fontSize: `${Math.max(0.6, scale) * 100}%`
         },
-        title: `${config.label}${sampleSizeMode === "exact" && cell.sampleSize ? ` (n=${cell.sampleSize})` : ""}${scale < 1 ? ` (weight: ${(scale * 100).toFixed(0)}%)` : ""}${sampleSizeMode === "exact" && cell.status !== CellStatus.NOT_ENROLLED ? " \u2014 Right-click to set size" : ""}`
+        title: description,
+        "aria-label": `Sequence S${rowIndex + 1}, period T${colIndex}: ${description}`
       },
       sampleSizeMode === "exact" && cell.sampleSize !== null && cell.status !== CellStatus.NOT_ENROLLED && /* @__PURE__ */ React.createElement("span", { className: "font-mono font-medium text-xs tabular-nums" }, "n=", cell.sampleSize),
       /* @__PURE__ */ React.createElement("span", { className: "font-mono text-[10px] font-semibold" }, config.shortLabel)
@@ -3244,8 +3347,7 @@ function App() {
   const handlePeriodContextMenu = useCallback(
     (e, index) => {
       setContextMenu({
-        x: e.clientX,
-        y: e.clientY,
+        ...menuAnchor(e),
         items: [
           {
             label: "Insert period before",
@@ -3285,8 +3387,7 @@ function App() {
   const handleSequenceContextMenu = useCallback(
     (e, index) => {
       setContextMenu({
-        x: e.clientX,
-        y: e.clientY,
+        ...menuAnchor(e),
         items: [
           {
             label: "Insert sequence above",
@@ -3370,7 +3471,10 @@ function App() {
       const canvas = await window.html2canvas(designGridRef.current, {
         backgroundColor: "#ffffff",
         scale: 2,
-        logging: false
+        logging: false,
+        // Leave out editing chrome (insert buttons, add lanes, menu chevrons),
+        // and collapse the space it took rather than leave blank strips.
+        onclone: (doc) => doc.querySelectorAll("[data-export-ignore]").forEach((el) => el.style.display = "none")
       });
       const link = document.createElement("a");
       link.download = `${activeDesign.name.replace(/\s+/g, "_")}_design.png`;
@@ -3492,7 +3596,10 @@ function App() {
     text
   ));
   const totalClusters = design2.getTotalClusters();
-  return /* @__PURE__ */ React.createElement("div", { className: "min-h-screen bg-paper" }, /* @__PURE__ */ React.createElement("div", { className: "max-w-7xl mx-auto px-4 md:px-6 pt-7 pb-12" }, /* @__PURE__ */ React.createElement("header", { className: "flex flex-wrap items-end justify-between gap-x-6 gap-y-3" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("h1", { className: "font-display text-[1.75rem] leading-tight font-semibold tracking-[-0.012em] text-ink-900" }, "Cluster trial design tool"), /* @__PURE__ */ React.createElement("p", { className: "mt-1 text-sm text-ink-600" }, "Compare up to 3 designs. Click cells to cycle status. Right-click headers for options.")), /* @__PURE__ */ React.createElement("div", { className: "flex gap-2" }, /* @__PURE__ */ React.createElement(
+  const clustersPerSeq = grid.map((_, i) => design2.getClusters(i));
+  const minClustersPerSeq = Math.min(...clustersPerSeq);
+  const maxClustersPerSeq = Math.max(...clustersPerSeq);
+  return /* @__PURE__ */ React.createElement("div", { className: "min-h-screen bg-paper" }, /* @__PURE__ */ React.createElement("div", { className: "max-w-7xl mx-auto px-4 md:px-6 pt-7 pb-12" }, /* @__PURE__ */ React.createElement("header", { className: "flex flex-wrap items-end justify-between gap-x-6 gap-y-3" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("h1", { className: "font-display text-[1.75rem] leading-tight font-semibold tracking-[-0.012em] text-ink-900" }, "Cluster trial design tool")), /* @__PURE__ */ React.createElement("div", { className: "flex gap-2" }, /* @__PURE__ */ React.createElement(
     "button",
     {
       onClick: () => document.getElementById("import-file").click(),
@@ -3656,9 +3763,10 @@ function App() {
       className: "chip"
     },
     label
-  ))), /* @__PURE__ */ React.createElement("div", { className: "canvas flex-1 flex items-center overflow-x-auto min-h-[220px]" }, /* @__PURE__ */ React.createElement("div", { ref: designGridRef, className: "inline-block p-5 mx-auto" }, /* @__PURE__ */ React.createElement("div", { className: "flex items-center mb-1 group" }, /* @__PURE__ */ React.createElement("div", { style: { width: SEQ_HEADER_W } }), /* @__PURE__ */ React.createElement("div", { className: "flex items-center" }, /* @__PURE__ */ React.createElement("div", { className: "w-2 flex justify-center" }, /* @__PURE__ */ React.createElement(
+  ))), /* @__PURE__ */ React.createElement("div", { className: "canvas flex-1 flex flex-col overflow-x-auto min-h-[220px]" }, /* @__PURE__ */ React.createElement("p", { className: "flex items-start gap-1.5 px-4 pt-3 text-xs leading-snug text-ink-600" }, /* @__PURE__ */ React.createElement(Icon, { name: "info", className: "w-3.5 h-3.5 mt-px text-ink-400" }), /* @__PURE__ */ React.createElement("span", null, "Click a cell to change its arm. Click a sequence or period label for more options, or use", " ", /* @__PURE__ */ React.createElement("span", { className: "inline-flex align-[-2px] items-center justify-center w-3.5 h-3.5 rounded-full bg-accent-600 text-white" }, /* @__PURE__ */ React.createElement(Icon, { name: "plus", className: "w-2.5 h-2.5" })), " ", "to insert one.", options2.sampleSizeMode === "exact" && " Right-click a cell to set its cluster-period size.")), /* @__PURE__ */ React.createElement("div", { className: "flex-1 flex items-center" }, /* @__PURE__ */ React.createElement("div", { ref: designGridRef, className: "inline-block p-5 mx-auto" }, /* @__PURE__ */ React.createElement("div", { className: "flex items-center mb-1 group" }, /* @__PURE__ */ React.createElement(ClustersColumnHeading, null), /* @__PURE__ */ React.createElement("div", { className: "flex items-center" }, /* @__PURE__ */ React.createElement("div", { className: "w-2 flex justify-center" }, /* @__PURE__ */ React.createElement(
     InsertButton,
     {
+      label: "Insert a period before T0",
       onClick: () => updateActiveDesign((e) => e.design.insertPeriod(0))
     }
   )), Array(numPeriods).fill(null).map((_, j) => /* @__PURE__ */ React.createElement(React.Fragment, { key: j }, /* @__PURE__ */ React.createElement(
@@ -3671,11 +3779,12 @@ function App() {
   ), /* @__PURE__ */ React.createElement("div", { className: "w-2 flex justify-center" }, /* @__PURE__ */ React.createElement(
     InsertButton,
     {
+      label: `Insert a period after T${j}`,
       onClick: () => updateActiveDesign(
         (e) => e.design.insertPeriod(j + 1)
       )
     }
-  )))))), /* @__PURE__ */ React.createElement("div", { className: "flex flex-col" }, /* @__PURE__ */ React.createElement("div", { className: "flex items-center h-2 group" }, /* @__PURE__ */ React.createElement(
+  )))))), /* @__PURE__ */ React.createElement("div", { className: "flex items-stretch" }, /* @__PURE__ */ React.createElement("div", { className: "flex flex-col" }, /* @__PURE__ */ React.createElement("div", { className: "flex items-center h-2 group" }, /* @__PURE__ */ React.createElement(
     "div",
     {
       style: { width: SEQ_HEADER_W },
@@ -3684,6 +3793,7 @@ function App() {
     /* @__PURE__ */ React.createElement(
       InsertButton,
       {
+        label: "Insert a sequence above S1",
         onClick: () => updateActiveDesign((e) => e.design.insertSequence(0))
       }
     )
@@ -3722,17 +3832,44 @@ function App() {
     /* @__PURE__ */ React.createElement(
       InsertButton,
       {
+        label: `Insert a sequence below S${i + 1}`,
         onClick: () => updateActiveDesign(
           (e) => e.design.insertSequence(i + 1)
         )
       }
     )
-  ))))))), /* @__PURE__ */ React.createElement("div", { className: "flex flex-wrap items-center justify-between gap-x-6 gap-y-2 px-4 py-2.5 border-t border-ink-100 text-xs" }, /* @__PURE__ */ React.createElement("div", { className: "flex flex-wrap gap-4" }, Object.entries(statusConfig).map(([status, config]) => /* @__PURE__ */ React.createElement("div", { key: status, className: "flex items-center gap-1.5" }, /* @__PURE__ */ React.createElement(
-    "span",
+  ))))), /* @__PURE__ */ React.createElement(
+    AddPeriodLane,
     {
-      className: `w-3 h-3 rounded-[3px] border ${config.bg} ${config.border}`
+      onClick: () => updateActiveDesign(
+        (e) => e.design.insertPeriod(e.design.numPeriods)
+      )
     }
-  ), /* @__PURE__ */ React.createElement("span", { className: "text-ink-600" }, config.label)))), /* @__PURE__ */ React.createElement("p", { className: "text-ink-600 tabular-nums" }, /* @__PURE__ */ React.createElement("span", { className: "font-semibold text-ink-900" }, numSequences), " ", numSequences === 1 ? "sequence" : "sequences", /* @__PURE__ */ React.createElement("span", { className: "mx-1.5 text-ink-300" }, "/"), /* @__PURE__ */ React.createElement("span", { className: "font-semibold text-ink-900" }, numPeriods), " ", numPeriods === 1 ? "period" : "periods", /* @__PURE__ */ React.createElement("span", { className: "mx-1.5 text-ink-300" }, "/"), /* @__PURE__ */ React.createElement("span", { className: "font-semibold text-ink-900" }, totalClusters), " ", totalClusters === 1 ? "cluster" : "clusters"))), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-1 md:grid-cols-2 gap-5 min-w-0 lg:col-span-2 xl:col-span-1 xl:col-start-1 xl:row-start-2" }, /* @__PURE__ */ React.createElement("section", { className: "panel" }, /* @__PURE__ */ React.createElement("div", { className: "panel-head" }, /* @__PURE__ */ React.createElement("h2", { className: "panel-title" }, "Analysis")), /* @__PURE__ */ React.createElement("div", { className: "panel-body grid grid-cols-2 gap-x-3 gap-y-3.5" }, /* @__PURE__ */ React.createElement("div", { className: "flex flex-col gap-1" }, /* @__PURE__ */ React.createElement("label", { className: "field-label" }, "Outcome type"), /* @__PURE__ */ React.createElement(
+  )), /* @__PURE__ */ React.createElement(
+    AddSequenceLane,
+    {
+      numPeriods,
+      cellSize,
+      onClick: () => updateActiveDesign(
+        (e) => e.design.insertSequence(e.design.numSequences)
+      )
+    }
+  )))), /* @__PURE__ */ React.createElement("div", { className: "flex flex-wrap items-center justify-between gap-x-6 gap-y-2 px-4 py-2.5 border-t border-ink-100 text-xs" }, /* @__PURE__ */ React.createElement(
+    "div",
+    {
+      className: "flex flex-wrap items-center gap-x-2 gap-y-1",
+      title: "Clicking a cell moves it to the next state, then back to control"
+    },
+    statusCycle.map((status, k) => {
+      const config = statusConfig[status];
+      return /* @__PURE__ */ React.createElement(React.Fragment, { key: status }, k > 0 && /* @__PURE__ */ React.createElement(Icon, { name: "chevron", className: "w-3 h-3 text-ink-400" }), /* @__PURE__ */ React.createElement("span", { className: "flex items-center gap-1.5" }, /* @__PURE__ */ React.createElement(
+        "span",
+        {
+          className: `w-3 h-3 rounded-[3px] border ${config.bg} ${config.border}`
+        }
+      ), /* @__PURE__ */ React.createElement("span", { className: "text-ink-600" }, config.label)));
+    })
+  ), /* @__PURE__ */ React.createElement("p", { className: "text-ink-600 tabular-nums" }, /* @__PURE__ */ React.createElement("span", { className: "font-semibold text-ink-900" }, numSequences), " ", numSequences === 1 ? "sequence" : "sequences", /* @__PURE__ */ React.createElement("span", { className: "mx-1.5 text-ink-300" }, "/"), /* @__PURE__ */ React.createElement("span", { className: "font-semibold text-ink-900" }, numPeriods), " ", numPeriods === 1 ? "period" : "periods", /* @__PURE__ */ React.createElement("span", { className: "mx-1.5 text-ink-300" }, "/"), /* @__PURE__ */ React.createElement("span", { className: "font-semibold text-ink-900" }, totalClusters), " ", totalClusters === 1 ? "cluster" : "clusters", /* @__PURE__ */ React.createElement("span", { className: "text-ink-500" }, " ", "(", minClustersPerSeq === maxClustersPerSeq ? minClustersPerSeq : `${minClustersPerSeq}\u2013${maxClustersPerSeq}`, " ", "per sequence)")))), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-1 md:grid-cols-2 gap-5 min-w-0 lg:col-span-2 xl:col-span-1 xl:col-start-1 xl:row-start-2" }, /* @__PURE__ */ React.createElement("section", { className: "panel" }, /* @__PURE__ */ React.createElement("div", { className: "panel-head" }, /* @__PURE__ */ React.createElement("h2", { className: "panel-title" }, "Analysis")), /* @__PURE__ */ React.createElement("div", { className: "panel-body grid grid-cols-2 gap-x-3 gap-y-3.5" }, /* @__PURE__ */ React.createElement("div", { className: "flex flex-col gap-1" }, /* @__PURE__ */ React.createElement("label", { className: "field-label" }, "Outcome type"), /* @__PURE__ */ React.createElement(
     "select",
     {
       value: options2.outcomeType,
@@ -3956,6 +4093,7 @@ function App() {
   ), contextMenu && /* @__PURE__ */ React.createElement(
     ContextMenu,
     {
+      key: `${contextMenu.x},${contextMenu.y}`,
       x: contextMenu.x,
       y: contextMenu.y,
       items: contextMenu.items,

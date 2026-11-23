@@ -2234,6 +2234,68 @@ const Icon = ({ name, className = "w-4 h-4" }) => (
 
 const SEQ_HEADER_W = 104; // cluster-count input + row label menu button
 
+// Explanatory tooltip for a control, styled like infoTip. Appears after a
+// short hover delay (and on keyboard focus unless showOnFocus is false), and
+// goes away on press or Escape. The text is always in the DOM and linked to
+// the control with aria-describedby, so screen readers get it too.
+const HoverTip = ({
+  title,
+  text,
+  children,
+  align = "start",
+  showOnFocus = true,
+  disabled = false,
+  tipId,
+  className = "",
+}) => {
+  const generatedId = React.useId();
+  const id = tipId || generatedId;
+  const [show, setShow] = useState(false);
+  const timer = useRef(null);
+
+  const open = (delay) => {
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => setShow(true), delay);
+  };
+  const close = () => {
+    clearTimeout(timer.current);
+    setShow(false);
+  };
+  useEffect(() => () => clearTimeout(timer.current), []);
+
+  const position = {
+    start: "left-0",
+    center: "left-1/2 -translate-x-1/2",
+    end: "right-0",
+  }[align];
+
+  return (
+    <span
+      className={`relative inline-flex ${className}`}
+      onMouseEnter={() => open(350)}
+      onMouseLeave={close}
+      onPointerDown={close}
+      onFocus={showOnFocus ? () => open(0) : undefined}
+      onBlur={close}
+      onKeyDown={(e) => e.key === "Escape" && close()}
+    >
+      {React.cloneElement(children, { "aria-describedby": id })}
+      <span
+        id={id}
+        role="tooltip"
+        className={`absolute z-50 top-full mt-2 ${position} w-64 px-3 py-2
+                    text-xs font-normal leading-snug text-ink-50 bg-ink-800 rounded-md shadow-pop
+                    pointer-events-none ${show && !disabled ? "" : "hidden"}`}
+      >
+        {title && (
+          <span className="block font-semibold text-white mb-0.5">{title}</span>
+        )}
+        {text}
+      </span>
+    </span>
+  );
+};
+
 const NumericInput = ({ value, onChange, min, max, step, className }) => {
   const [raw, setRaw] = useState(String(value));
   const [focused, setFocused] = useState(false);
@@ -4834,8 +4896,17 @@ const teInfo = getTreatmentEffectInfo(options.outcomeType);
           role="tablist"
         >
           {designs.map((d, i) => (
-            <div
+            <HoverTip
               key={i}
+              tipId={`design-tab-tip-${i}`}
+              showOnFocus={false}
+              text={
+                designs.length < 3
+                  ? "Click the name to rename this design. Add up to three designs to compare their results side by side."
+                  : "Click the name to rename this design. You are comparing the maximum of three designs; remove one to add another."
+              }
+            >
+            <div
               role="tab"
               aria-selected={i === activeIndex}
               className={`group relative -mb-px flex items-center gap-2 pl-3 pr-2 h-10 rounded-t-md border border-b-0 cursor-pointer transition-colors
@@ -4862,6 +4933,7 @@ const teInfo = getTreatmentEffectInfo(options.outcomeType);
                 }}
                 onFocus={() => setActiveIndex(i)}
                 aria-label="Design name"
+                aria-describedby={`design-tab-tip-${i}`}
                 className={`bg-transparent text-sm w-24 rounded px-0.5 focus:outline-none focus:bg-ink-50
                   ${
                     i === activeIndex
@@ -4883,9 +4955,15 @@ const teInfo = getTreatmentEffectInfo(options.outcomeType);
                 </button>
               )}
             </div>
+            </HoverTip>
           ))}
           {designs.length < 3 && (
             <div className="relative mb-1.5 ml-1" ref={addMenuRef}>
+              <HoverTip
+                disabled={addMenuOpen}
+                title="Compare designs"
+                text={`Add a blank design or duplicate an existing one. You can compare up to three designs side by side (${3 - designs.length} more available), and rename any design by clicking its name.`}
+              >
               <button
                 onClick={() => setAddMenuOpen((prev) => !prev)}
                 className="btn btn-sm border-transparent text-ink-600 hover:text-ink-900 hover:bg-ink-100"
@@ -4894,6 +4972,7 @@ const teInfo = getTreatmentEffectInfo(options.outcomeType);
                 <Icon name="plus" className="w-3.5 h-3.5" />
                 Add design
               </button>
+              </HoverTip>
               {addMenuOpen && (
                 <div className="absolute top-full left-0 mt-1 bg-white border border-ink-200 rounded-md shadow-pop z-50 py-1 min-w-[180px]">
                   <button
@@ -4937,6 +5016,11 @@ const teInfo = getTreatmentEffectInfo(options.outcomeType);
                       className="w-20"
                     />
                   </label>
+                  <HoverTip
+                    align="end"
+                    title="Optimal cell weights"
+                    text="Shrinks each cell in proportion to its weight in the optimal design, which is how much that cluster-period contributes to estimating the treatment effect. Small cells add little information. Updates when you recalculate."
+                  >
                   <button
                     onClick={() =>
                       setWeightMode(weightMode === "cell" ? "none" : "cell")
@@ -4945,13 +5029,18 @@ const teInfo = getTreatmentEffectInfo(options.outcomeType);
                     className={`btn btn-sm btn-toggle ${
                       weightMode === "cell" && resultsStale ? "opacity-60" : ""
                     }`}
-                    title="Scale cells by their optimal allocation weight"
                   >
                     {weightMode === "cell" && (
                       <Icon name="check" className="w-3 h-3" />
                     )}
                     Cell weights{weightMode === "cell" && resultsStale && " *"}
                   </button>
+                  </HoverTip>
+                  <HoverTip
+                    align="end"
+                    title="Optimal row weights"
+                    text="Shrinks each sequence in proportion to the share of clusters it would get in the optimal design. In a stepped wedge the middle sequences are usually worth more than the first and last. Updates when you recalculate."
+                  >
                   <button
                     onClick={() =>
                       setWeightMode(weightMode === "row" ? "none" : "row")
@@ -4960,13 +5049,13 @@ const teInfo = getTreatmentEffectInfo(options.outcomeType);
                     className={`btn btn-sm btn-toggle ${
                       weightMode === "row" && resultsStale ? "opacity-60" : ""
                     }`}
-                    title="Scale sequences by their optimal allocation weight"
                   >
                     {weightMode === "row" && (
                       <Icon name="check" className="w-3 h-3" />
                     )}
                     Row weights{weightMode === "row" && resultsStale && " *"}
                   </button>
+                  </HoverTip>
                   <button
                     onClick={exportDesignImage}
                     className="btn btn-sm btn-secondary"

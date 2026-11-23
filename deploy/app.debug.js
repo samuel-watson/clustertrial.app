@@ -1937,6 +1937,60 @@ const Icon = ({ name, className = "w-4 h-4" }) => /* @__PURE__ */ React.createEl
   /* @__PURE__ */ React.createElement("path", { d: ICON_PATHS[name] })
 );
 const SEQ_HEADER_W = 104;
+const HoverTip = ({
+  title,
+  text,
+  children,
+  align = "start",
+  showOnFocus = true,
+  disabled = false,
+  tipId,
+  className = ""
+}) => {
+  const generatedId = React.useId();
+  const id = tipId || generatedId;
+  const [show, setShow] = useState(false);
+  const timer = useRef(null);
+  const open = (delay) => {
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => setShow(true), delay);
+  };
+  const close = () => {
+    clearTimeout(timer.current);
+    setShow(false);
+  };
+  useEffect(() => () => clearTimeout(timer.current), []);
+  const position = {
+    start: "left-0",
+    center: "left-1/2 -translate-x-1/2",
+    end: "right-0"
+  }[align];
+  return /* @__PURE__ */ React.createElement(
+    "span",
+    {
+      className: `relative inline-flex ${className}`,
+      onMouseEnter: () => open(350),
+      onMouseLeave: close,
+      onPointerDown: close,
+      onFocus: showOnFocus ? () => open(0) : void 0,
+      onBlur: close,
+      onKeyDown: (e) => e.key === "Escape" && close()
+    },
+    React.cloneElement(children, { "aria-describedby": id }),
+    /* @__PURE__ */ React.createElement(
+      "span",
+      {
+        id,
+        role: "tooltip",
+        className: `absolute z-50 top-full mt-2 ${position} w-64 px-3 py-2
+                    text-xs font-normal leading-snug text-ink-50 bg-ink-800 rounded-md shadow-pop
+                    pointer-events-none ${show && !disabled ? "" : "hidden"}`
+      },
+      title && /* @__PURE__ */ React.createElement("span", { className: "block font-semibold text-white mb-0.5" }, title),
+      text
+    )
+  );
+};
 const NumericInput = ({ value, onChange, min, max, step, className }) => {
   const [raw, setRaw] = useState(String(value));
   const [focused, setFocused] = useState(false);
@@ -3633,61 +3687,78 @@ function App() {
       role: "tablist"
     },
     designs.map((d, i) => /* @__PURE__ */ React.createElement(
-      "div",
+      HoverTip,
       {
         key: i,
-        role: "tab",
-        "aria-selected": i === activeIndex,
-        className: `group relative -mb-px flex items-center gap-2 pl-3 pr-2 h-10 rounded-t-md border border-b-0 cursor-pointer transition-colors
-                ${i === activeIndex ? "bg-white border-ink-200" : "border-transparent hover:bg-ink-100"}`,
-        onClick: () => setActiveIndex(i)
+        tipId: `design-tab-tip-${i}`,
+        showOnFocus: false,
+        text: designs.length < 3 ? "Click the name to rename this design. Add up to three designs to compare their results side by side." : "Click the name to rename this design. You are comparing the maximum of three designs; remove one to add another."
       },
-      i === activeIndex && /* @__PURE__ */ React.createElement(
-        "span",
-        {
-          className: `absolute left-0 right-0 top-0 h-0.5 rounded-t-md ${designColors[i].bg}`
-        }
-      ),
-      /* @__PURE__ */ React.createElement("span", { className: `w-2 h-2 rounded-full ${designColors[i].bg}` }),
       /* @__PURE__ */ React.createElement(
-        "input",
+        "div",
         {
-          type: "text",
-          value: d.name,
-          onChange: (e) => renameDesign(i, e.target.value),
-          onClick: (e) => {
-            e.stopPropagation();
-            setActiveIndex(i);
-          },
-          onFocus: () => setActiveIndex(i),
-          "aria-label": "Design name",
-          className: `bg-transparent text-sm w-24 rounded px-0.5 focus:outline-none focus:bg-ink-50
-                  ${i === activeIndex ? "font-semibold text-ink-900" : "font-medium text-ink-600"}`
-        }
-      ),
-      designs.length > 1 && /* @__PURE__ */ React.createElement(
-        "button",
-        {
-          onClick: (e) => {
-            e.stopPropagation();
-            removeDesign(i);
-          },
-          className: "w-5 h-5 flex items-center justify-center rounded text-ink-400 hover:text-red-600 hover:bg-red-50",
-          title: "Remove design",
-          "aria-label": `Remove ${d.name}`
+          role: "tab",
+          "aria-selected": i === activeIndex,
+          className: `group relative -mb-px flex items-center gap-2 pl-3 pr-2 h-10 rounded-t-md border border-b-0 cursor-pointer transition-colors
+                ${i === activeIndex ? "bg-white border-ink-200" : "border-transparent hover:bg-ink-100"}`,
+          onClick: () => setActiveIndex(i)
         },
-        /* @__PURE__ */ React.createElement(Icon, { name: "close", className: "w-3 h-3" })
+        i === activeIndex && /* @__PURE__ */ React.createElement(
+          "span",
+          {
+            className: `absolute left-0 right-0 top-0 h-0.5 rounded-t-md ${designColors[i].bg}`
+          }
+        ),
+        /* @__PURE__ */ React.createElement("span", { className: `w-2 h-2 rounded-full ${designColors[i].bg}` }),
+        /* @__PURE__ */ React.createElement(
+          "input",
+          {
+            type: "text",
+            value: d.name,
+            onChange: (e) => renameDesign(i, e.target.value),
+            onClick: (e) => {
+              e.stopPropagation();
+              setActiveIndex(i);
+            },
+            onFocus: () => setActiveIndex(i),
+            "aria-label": "Design name",
+            "aria-describedby": `design-tab-tip-${i}`,
+            className: `bg-transparent text-sm w-24 rounded px-0.5 focus:outline-none focus:bg-ink-50
+                  ${i === activeIndex ? "font-semibold text-ink-900" : "font-medium text-ink-600"}`
+          }
+        ),
+        designs.length > 1 && /* @__PURE__ */ React.createElement(
+          "button",
+          {
+            onClick: (e) => {
+              e.stopPropagation();
+              removeDesign(i);
+            },
+            className: "w-5 h-5 flex items-center justify-center rounded text-ink-400 hover:text-red-600 hover:bg-red-50",
+            title: "Remove design",
+            "aria-label": `Remove ${d.name}`
+          },
+          /* @__PURE__ */ React.createElement(Icon, { name: "close", className: "w-3 h-3" })
+        )
       )
     )),
     designs.length < 3 && /* @__PURE__ */ React.createElement("div", { className: "relative mb-1.5 ml-1", ref: addMenuRef }, /* @__PURE__ */ React.createElement(
-      "button",
+      HoverTip,
       {
-        onClick: () => setAddMenuOpen((prev) => !prev),
-        className: "btn btn-sm border-transparent text-ink-600 hover:text-ink-900 hover:bg-ink-100",
-        "aria-expanded": addMenuOpen
+        disabled: addMenuOpen,
+        title: "Compare designs",
+        text: `Add a blank design or duplicate an existing one. You can compare up to three designs side by side (${3 - designs.length} more available), and rename any design by clicking its name.`
       },
-      /* @__PURE__ */ React.createElement(Icon, { name: "plus", className: "w-3.5 h-3.5" }),
-      "Add design"
+      /* @__PURE__ */ React.createElement(
+        "button",
+        {
+          onClick: () => setAddMenuOpen((prev) => !prev),
+          className: "btn btn-sm border-transparent text-ink-600 hover:text-ink-900 hover:bg-ink-100",
+          "aria-expanded": addMenuOpen
+        },
+        /* @__PURE__ */ React.createElement(Icon, { name: "plus", className: "w-3.5 h-3.5" }),
+        "Add design"
+      )
     ), addMenuOpen && /* @__PURE__ */ React.createElement("div", { className: "absolute top-full left-0 mt-1 bg-white border border-ink-200 rounded-md shadow-pop z-50 py-1 min-w-[180px]" }, /* @__PURE__ */ React.createElement(
       "button",
       {
@@ -3717,27 +3788,41 @@ function App() {
       className: "w-20"
     }
   )), /* @__PURE__ */ React.createElement(
-    "button",
+    HoverTip,
     {
-      onClick: () => setWeightMode(weightMode === "cell" ? "none" : "cell"),
-      "aria-pressed": weightMode === "cell",
-      className: `btn btn-sm btn-toggle ${weightMode === "cell" && resultsStale ? "opacity-60" : ""}`,
-      title: "Scale cells by their optimal allocation weight"
+      align: "end",
+      title: "Optimal cell weights",
+      text: "Shrinks each cell in proportion to its weight in the optimal design, which is how much that cluster-period contributes to estimating the treatment effect. Small cells add little information. Updates when you recalculate."
     },
-    weightMode === "cell" && /* @__PURE__ */ React.createElement(Icon, { name: "check", className: "w-3 h-3" }),
-    "Cell weights",
-    weightMode === "cell" && resultsStale && " *"
+    /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        onClick: () => setWeightMode(weightMode === "cell" ? "none" : "cell"),
+        "aria-pressed": weightMode === "cell",
+        className: `btn btn-sm btn-toggle ${weightMode === "cell" && resultsStale ? "opacity-60" : ""}`
+      },
+      weightMode === "cell" && /* @__PURE__ */ React.createElement(Icon, { name: "check", className: "w-3 h-3" }),
+      "Cell weights",
+      weightMode === "cell" && resultsStale && " *"
+    )
   ), /* @__PURE__ */ React.createElement(
-    "button",
+    HoverTip,
     {
-      onClick: () => setWeightMode(weightMode === "row" ? "none" : "row"),
-      "aria-pressed": weightMode === "row",
-      className: `btn btn-sm btn-toggle ${weightMode === "row" && resultsStale ? "opacity-60" : ""}`,
-      title: "Scale sequences by their optimal allocation weight"
+      align: "end",
+      title: "Optimal row weights",
+      text: "Shrinks each sequence in proportion to the share of clusters it would get in the optimal design. In a stepped wedge the middle sequences are usually worth more than the first and last. Updates when you recalculate."
     },
-    weightMode === "row" && /* @__PURE__ */ React.createElement(Icon, { name: "check", className: "w-3 h-3" }),
-    "Row weights",
-    weightMode === "row" && resultsStale && " *"
+    /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        onClick: () => setWeightMode(weightMode === "row" ? "none" : "row"),
+        "aria-pressed": weightMode === "row",
+        className: `btn btn-sm btn-toggle ${weightMode === "row" && resultsStale ? "opacity-60" : ""}`
+      },
+      weightMode === "row" && /* @__PURE__ */ React.createElement(Icon, { name: "check", className: "w-3 h-3" }),
+      "Row weights",
+      weightMode === "row" && resultsStale && " *"
+    )
   ), /* @__PURE__ */ React.createElement(
     "button",
     {

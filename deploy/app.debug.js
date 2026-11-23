@@ -1106,7 +1106,7 @@ const MathsInterface = {
     };
     const offBlock = (me) => {
       const n = dataMatrix.length;
-      if (!me || me.rows !== n || clusters.length < 2) return 0;
+      if (!me || me.rows !== n || me.cols !== n || me.data.size() !== n * n || clusters.length < 2) return 0;
       const a = clusters[0], b = clusters[1];
       let m = 0;
       for (let i = 0; i < a.k; i++)

@@ -1158,8 +1158,10 @@ struct AnalysisResult {
 
 struct MatrixExport {
     std::vector<double> data;   // row-major flat data
-    int rows;
-    int cols;
+    // Zero by default: estimators leave some matrices unset, and garbage
+    // dimensions would make JS read past the end of the empty data
+    int rows = 0;
+    int cols = 0;
     std::string label;
 };
 

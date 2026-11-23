@@ -41,7 +41,7 @@ async function loadWasm() {
         // Fetch the binary and hash it before instantiation
         // Bump the version whenever the engine is rebuilt, so browsers don't
         // pair a cached old binary with new JavaScript
-        const wasmResponse = await fetch('glmm_wasm.wasm?v=4');
+        const wasmResponse = await fetch('glmm_wasm.wasm?v=5');
         const wasmBytes = await wasmResponse.arrayBuffer();
         const hashBuffer = await crypto.subtle.digest('SHA-256', wasmBytes);
         wasmHash = Array.from(new Uint8Array(hashBuffer))

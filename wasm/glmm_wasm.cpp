@@ -1634,8 +1634,22 @@ Eigen::MatrixXd buildGEECovarianceMatrix() {
     Eigen::MatrixXd V = Eigen::MatrixXd::Zero(n_obs, n_obs);
     
     double mu_bar = (stored_mu0_ + stored_mu1_) / 2.0;
-    double totalvar = mu_bar * (1.0 - mu_bar);
-    
+
+    // Marginal variance of one individual's outcome at mean mu_bar.
+    // Binomial: mu(1-mu).
+    // Poisson: the engine's count-scale ICC (computeCorrPoisson) is
+    //   ICC = sigma2_B / (mu + sigma2_B),
+    // where sigma2_B is the between-cluster variance of the rate and mu the
+    // Poisson (within) variance. So Var(Y) = mu + sigma2_B = mu / (1 - ICC),
+    // giving sig2CP = ICC * mu / (1 - ICC) and within variance mu.
+    double totalvar;
+    if (family == "poisson") {
+        double icc_c = std::min(std::max(stored_icc_, 0.0), 1.0 - 1e-10);
+        totalvar = mu_bar / (1.0 - icc_c);
+    } else {
+        totalvar = mu_bar * (1.0 - mu_bar);
+    }
+
     double sig2CP = stored_icc_ * totalvar;
     
     // Individual autocorrelation only applies to cohort designs
@@ -1648,8 +1662,19 @@ Eigen::MatrixXd buildGEECovarianceMatrix() {
 
     // Individual-level variance, split into a persistent part (shared by a
     // cohort member across periods) and a transient part
-    double sig2E    = (1.0 - effective_iac) * (totalvar - sig2CP);
-    double sig2Ind  = effective_iac * (totalvar - sig2CP);
+    double sig2E, sig2Ind;
+    if (family == "poisson") {
+        // The cohort solver (computeCorrelationsCohortPoisson) keeps the
+        // denominator at mu + sigma2_B and sets the persistent individual
+        // covariance to IAC * (1 - ICC) * (mu + sigma2_B) = IAC * mu. That
+        // persistent variance comes on top of the Poisson noise mu, which
+        // stays wholly transient.
+        sig2E   = totalvar - sig2CP;
+        sig2Ind = effective_iac * (totalvar - sig2CP);
+    } else {
+        sig2E   = (1.0 - effective_iac) * (totalvar - sig2CP);
+        sig2Ind = effective_iac * (totalvar - sig2CP);
+    }
 
     double r = stored_cac_or_lambda_;
 
@@ -2204,7 +2229,7 @@ else if (est == Estimator::GEEExchangeableTTest) {
 }
 else if (est == Estimator::DesignEffectTTest) {
     Eigen::MatrixXd X = model->model.linear_predictor.X();
-    Eigen::MatrixXd V = buildGEECovarianceMatrix();  // Kasza/Hemming style with totalvar = p̄(1-p̄)
+    Eigen::MatrixXd V = buildGEECovarianceMatrix();  // Kasza/Hemming style; totalvar depends on family
     int n_obs = X.rows();
     
     // Risk difference as effect measure

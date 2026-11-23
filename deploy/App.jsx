@@ -712,7 +712,7 @@ const TRACE_ESTIMATORS = {
 };
 
 const TRACE_REASONS = {
-  kr: 'The Kenward-Roger adjustment comes from glmmrBase and is not recomputed here. Power below is recomputed from the engine’s standard error.',
+  kr: 'The Kenward-Roger adjustment is computed in the engine and is not recomputed here. Power below is recomputed from the engine’s standard error.',
   cv: 'The correction for variable cluster sizes uses the engine’s internal weights, which aren’t exported. Power below is recomputed from the engine’s standard error.',
   order: 'Skipped because the rows of X are not in the expected order.',
   pd: 'Skipped because a covariance block is not positive definite.',
@@ -3076,7 +3076,8 @@ const CalculationSteps = ({ t, seqView, setSeqView }) => {
           <>
             <CalcText>
               Kenward-Roger starts from the model-based variance and inflates it for the uncertainty in estimating the
-              covariance parameters. The adjustment is computed by glmmrBase.
+              covariance parameters. The engine uses the first-order adjustment, with variance terms that the
+              cluster-period means cannot tell apart merged into one and the open-cohort retention treated as known.
             </CalcText>
             <CalcMathBox>
               <div>M = Xᵀ Σ⁻¹ X <span className="text-ink-500">({P} × {P})</span></div>
@@ -3170,7 +3171,7 @@ const CalculationSteps = ({ t, seqView, setSeqView }) => {
           <p className="flex items-start gap-1.5 text-[13px] leading-relaxed text-red-800 bg-red-50 border border-red-200 rounded-md px-3 py-2 max-w-[78ch]">
             <Icon name="alert" className="w-4 h-4 mt-0.5" />
             <span>
-              The Kenward-Roger approximation in glmmrBase returned no valid degrees of freedom ({dofText(test.dof)}) for
+              The Kenward-Roger approximation returned no valid degrees of freedom ({dofText(test.dof)}) for
               this design, so there is no t distribution to test against. The engine still reports power{' '}
               {fmtNum(engine.power, 6)}, which can’t be reproduced. Treat this design’s result with caution, or choose
               another estimator.
@@ -3184,7 +3185,7 @@ const CalculationSteps = ({ t, seqView, setSeqView }) => {
             ? ' against the normal distribution. Degrees of freedom don’t enter the calculation.'
             : info.dist === 'bw'
             ? `, using a t distribution with cluster-periods minus fixed effects = ${t.nRows} − ${P} = ${test.dof} degrees of freedom.`
-            : `, using a t distribution with ${fmtNum(test.dof, 5)} degrees of freedom from the Kenward-Roger approximation in glmmrBase.`}{' '}
+            : `, using a t distribution with ${fmtNum(test.dof, 5)} degrees of freedom from the Kenward-Roger approximation.`}{' '}
           The effect is{' '}
           {info.variance === 'deff'
             ? `the ${binary ? 'risk' : 'rate'} difference ${binary ? 'p' : 'μ'}₁ − ${binary ? 'p' : 'μ'}₀`

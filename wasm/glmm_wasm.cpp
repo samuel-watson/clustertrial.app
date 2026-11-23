@@ -1799,6 +1799,204 @@ Eigen::MatrixXd buildGEECovarianceMatrix() {
     void setTreatmentEffect(double te) { treatment_effect = te; }
     void setIncludeIntercept(bool inc) { include_intercept = inc; }
 
+    struct KRResult {
+        Eigen::MatrixXd vcov;   // KR-adjusted covariance of beta
+        Eigen::VectorXd dof;    // KR degrees of freedom for each beta
+        int rank = 0;           // rank of the covariance-parameter information
+        int npar = 0;           // number of covariance parameters (incl. residual)
+    };
+
+    // Kenward-Roger small-sample correction (Kenward & Roger 1997, REML
+    // information), used here instead of glmmrBase's small_sample_correction.
+    // That routine inverts the covariance-parameter information with a plain
+    // Cholesky solve and reads the off-diagonal Q/RR terms with a triangular
+    // index that does not match how they are stored once there are three or
+    // more parameters. Several of this app's terms are exactly collinear with
+    // one row per cluster-period: the cohort term (wn|gr(cl)) with the cluster
+    // term when sizes are equal, and (1|gr(cl,t)) with the residual. Their
+    // information matrix is singular. In exact arithmetic the null direction
+    // drops out of every KR quantity, but the index mismatch stops it cancelling
+    // and the adjustment explodes (SE up to 1e8 times too large for cohorts).
+    //
+    // Here:
+    //  - the two cohort terms (wn|...) and (xd|gr(cl,t)) share one variance,
+    //    sigma2_ind (see pushCohortTheta), so they are one parameter;
+    //  - the open-cohort retention is treated as known. It describes which
+    //    individuals are measured when, which an individual-level analysis
+    //    takes from the data rather than estimating;
+    //  - the information is inverted with a scale-invariant pseudo-inverse,
+    //    which merges collinear variance terms into one (identical to
+    //    reparameterising them as their sum);
+    //  - the adjustment is first order: the second-derivative term
+    //    -1/4 W_ij R_ij is left out (SAS DDFM=KR(FIRSTORDER), the
+    //    Prasad-Rao / Harville-Jeske estimator). It is zero for exchangeable
+    //    and nested exchangeable structures. For decay parameters, which a
+    //    few periods identify poorly, it dominated and could even make the
+    //    variance negative, and it did not shrink as clusters were added;
+    //  - every sum runs over all (i, j), so no triangular indexing is needed;
+    //  - Sigma is block diagonal by cluster, so the work is done per cluster.
+    // Sigma itself is never changed. The degrees of freedom formula does not
+    // involve the second-derivative term.
+    KRResult kenwardRoger() {
+        using Eigen::MatrixXd;
+        using Eigen::VectorXd;
+        auto& cov = model->model.covariance;
+        const bool gaussian = model->model.family.family == glmmr::Fam::gaussian;
+        const MatrixXd X = model->model.linear_predictor.X();
+        const int P = X.cols();
+        const MatrixXd Sigma = model->matrix.Sigma();
+        const Eigen::SparseMatrix<double> Zs = cov.Z().sparseView();
+        const int R = cov.npar();
+
+        // Map glmmr parameters to KR parameters: shared values get one
+        // index, known parameters get -1. Cohort parameters come last, in
+        // pushCohortTheta order: sigma2_ind, [retention], [sigma2_ind (xd)].
+        std::vector<int> grp(R);
+        for (int k = 0; k < R; k++) grp[k] = k;
+        const bool open = sampling_structure == "open_cohort";
+        if (open || sampling_structure == "closed_cohort") {
+            const bool sizeTerm = hasSizeTerm();
+            const int idxWn = R - (open ? 2 : 1) - (sizeTerm ? 1 : 0);
+            if (idxWn >= 0) {
+                if (open) grp[idxWn + 1] = -1;
+                if (sizeTerm) grp[R - 1] = idxWn;
+            }
+        }
+        // Renumber the remaining parameters consecutively
+        std::vector<int> renum(R, -1);
+        int G = 0;
+        for (int k = 0; k < R; k++) if (grp[k] == k) renum[k] = G++;
+        for (int k = 0; k < R; k++) grp[k] = grp[k] < 0 ? -1 : renum[grp[k]];
+        const int Rm = G + (gaussian ? 1 : 0);
+
+        // First derivatives of D, by KR parameter
+        std::vector<MatrixXd> d0;
+        cov.derivatives(d0, 1);
+        const int Qd = d0[0].rows();
+        std::vector<MatrixXd> dD(G, MatrixXd::Zero(Qd, Qd));
+        for (int k = 0; k < R; k++) if (grp[k] >= 0) dD[grp[k]] += d0[1 + k];
+
+        // Sigma derivatives (n x n); residual variance for Gaussian
+        const int n = Sigma.rows();
+        std::vector<MatrixXd> S(Rm);
+        for (int g = 0; g < G; g++) {
+            MatrixXd ZD = Zs * dD[g];
+            S[g] = ZD * Zs.transpose();
+        }
+        if (gaussian) {
+            Eigen::ArrayXd w = model->model.data.weights;
+            if (w.size() != n) w = Eigen::ArrayXd::Ones(n);
+            S[G] = w.inverse().matrix().asDiagonal();
+        }
+
+        // Cluster blocks (all random effects are nested in clusters)
+        std::map<int, std::vector<int>> blocks;
+        for (int i = 0; i < n; i++) blocks[(int)data(i, 0)].push_back(i);
+
+        MatrixXd M = MatrixXd::Zero(P, P);
+        std::vector<MatrixXd> Pm(Rm, MatrixXd::Zero(P, P));
+        std::vector<std::vector<MatrixXd>> Qm(Rm, std::vector<MatrixXd>(Rm, MatrixXd::Zero(P, P)));
+        MatrixXd Iml = MatrixXd::Zero(Rm, Rm);
+
+        for (const auto& kv : blocks) {
+            const std::vector<int>& rows = kv.second;
+            const int nc = rows.size();
+            MatrixXd Sc(nc, nc), Xc(nc, P);
+            for (int a = 0; a < nc; a++) {
+                Xc.row(a) = X.row(rows[a]);
+                for (int b = 0; b < nc; b++) Sc(a, b) = Sigma(rows[a], rows[b]);
+            }
+            Eigen::LLT<MatrixXd> llt(Sc);
+            MatrixXd Si = llt.solve(MatrixXd::Identity(nc, nc));
+            MatrixXd SiX = Si * Xc;
+            M += Xc.transpose() * SiX;
+            std::vector<MatrixXd> A(Rm), B(Rm);
+            for (int i = 0; i < Rm; i++) {
+                MatrixXd Sic(nc, nc);
+                for (int a = 0; a < nc; a++)
+                    for (int b = 0; b < nc; b++) Sic(a, b) = S[i](rows[a], rows[b]);
+                A[i] = Si * Sic;          // Sigma^-1 S_i
+                B[i] = Sic * SiX;         // S_i Sigma^-1 X
+                Pm[i] -= SiX.transpose() * B[i];
+            }
+            for (int i = 0; i < Rm; i++) {
+                MatrixXd SiBi = Si * B[i];
+                for (int j = 0; j < Rm; j++) {
+                    Iml(i, j) += 0.5 * (A[i].cwiseProduct(A[j].transpose())).sum();
+                    Qm[i][j] += SiBi.transpose() * B[j];
+                }
+            }
+        }
+
+        MatrixXd Phi = M.llt().solve(MatrixXd::Identity(P, P));
+
+        // REML information for the covariance parameters
+        MatrixXd Info(Rm, Rm);
+        for (int i = 0; i < Rm; i++)
+            for (int j = 0; j < Rm; j++)
+                Info(i, j) = Iml(i, j) - (Phi * Qm[i][j]).trace()
+                           + 0.5 * (Phi * Pm[i] * Phi * Pm[j]).trace();
+        Info = 0.5 * (Info + Info.transpose());
+
+        // Scale-invariant pseudo-inverse
+        VectorXd dsc = Info.diagonal().cwiseAbs().cwiseSqrt();
+        for (int i = 0; i < Rm; i++) if (!(dsc(i) > 0)) dsc(i) = 1.0;
+        MatrixXd Is = dsc.cwiseInverse().asDiagonal() * Info * dsc.cwiseInverse().asDiagonal();
+        Eigen::SelfAdjointEigenSolver<MatrixXd> es(Is);
+        const VectorXd& ev = es.eigenvalues();
+        double evmax = ev.maxCoeff();
+        MatrixXd Wi = MatrixXd::Zero(Rm, Rm);
+        int rank = 0;
+        for (int k = 0; k < Rm; k++) {
+            if (ev(k) > 1e-9 * evmax) {
+                Wi += es.eigenvectors().col(k) * es.eigenvectors().col(k).transpose() / ev(k);
+                rank++;
+            }
+        }
+        Wi = dsc.cwiseInverse().asDiagonal() * Wi * dsc.cwiseInverse().asDiagonal();
+
+        // Adjusted covariance
+        MatrixXd meat = MatrixXd::Zero(P, P);
+        for (int i = 0; i < Rm; i++) {
+            for (int j = 0; j < Rm; j++) {
+                if (Wi(i, j) == 0.0) continue;
+                meat += Wi(i, j) * (Qm[i][j] - Pm[i] * Phi * Pm[j]);
+            }
+        }
+        KRResult out;
+        out.vcov = Phi + 2.0 * Phi * meat * Phi;
+        out.vcov = 0.5 * (out.vcov + out.vcov.transpose());
+        out.rank = rank;
+        out.npar = Rm;
+
+        // Degrees of freedom for each single coefficient (l = 1)
+        out.dof.resize(P);
+        std::vector<MatrixXd> PhiPPhi(Rm);
+        for (int i = 0; i < Rm; i++) PhiPPhi[i] = Phi * Pm[i] * Phi;
+        for (int p = 0; p < P; p++) {
+            // Theta = e_p e_p' / Phi_pp, so tr(Theta Phi P_i Phi) = (Phi P_i Phi)_pp / Phi_pp.
+            // For a single coefficient A1 and A2 coincide.
+            double vlb = Phi(p, p);
+            double a1 = 0.0;
+            for (int i = 0; i < Rm; i++)
+                for (int j = 0; j < Rm; j++)
+                    a1 += Wi(i, j) * (PhiPPhi[i](p, p) / vlb) * (PhiPPhi[j](p, p) / vlb);
+            double a2 = a1;
+            double B = 0.5 * (a1 + 6.0 * a2);
+            double g = (2.0 * a1 - 5.0 * a2) / (3.0 * a2);
+            double den = 3.0 + 2.0 * (1.0 - g);
+            double c1 = g / den, c2 = (1.0 - g) / den, c3 = (3.0 - g) / den;
+            double v0 = 1.0 + c1 * B;
+            double v1 = 1.0 - c2 * B;
+            double v2 = 1.0 / (1.0 - c3 * B);
+            double rho = std::pow((1.0 - a2) / v1, 2) * v0 * v2;
+            out.dof(p) = 4.0 + 3.0 / (rho - 1.0);
+        }
+
+        EM_ASM({ console.log("KR: covariance parameters", $0, "information rank", $1); }, Rm, rank);
+        return out;
+    }
+
     Eigen::MatrixXd applyCVCorrection(const Eigen::MatrixXd& Minv, double cv) {
     if (cv <= 0) return Minv;
     
@@ -1903,12 +2101,9 @@ AnalysisResult calculatePower(int estimator_type, double cv = 0.0) {
             double dofkr;
             
             // Get KR degrees of freedom
-            if (correlation_structure != "exchangeable" && correlation_structure != "nested_exchangeable") {
-                auto res = model->matrix.template small_sample_correction<glmmr::SE::KRBoth, glmmr::IM::EIM>();
-                dofkr = res.dof(idx) > 1 ? res.dof(idx) : 1.0;
-            } else {
-                auto res = model->matrix.template small_sample_correction<glmmr::SE::KR, glmmr::IM::EIM>();
-                dofkr = res.dof(idx) > 1 ? res.dof(idx) : 1.0;
+            {
+                KRResult kr = kenwardRoger();
+                dofkr = kr.dof(idx) > 1 ? kr.dof(idx) : 1.0;
             }
             
             // Use GLS standard errors
@@ -1938,14 +2133,10 @@ AnalysisResult calculatePower(int estimator_type, double cv = 0.0) {
             double dofkr;
             Eigen::MatrixXd KRcov;
             
-            if (correlation_structure != "exchangeable" && correlation_structure != "nested_exchangeable") {
-                auto res = model->matrix.template small_sample_correction<glmmr::SE::KRBoth, glmmr::IM::EIM>();
-                dofkr = res.dof(idx) > 1 ? res.dof(idx) : 1.0;
-                KRcov = res.vcov_beta;
-            } else {
-                auto res = model->matrix.template small_sample_correction<glmmr::SE::KR, glmmr::IM::EIM>();
-                dofkr = res.dof(idx) > 1 ? res.dof(idx) : 1.0;
-                KRcov = res.vcov_beta;
+            {
+                KRResult kr = kenwardRoger();
+                dofkr = kr.dof(idx) > 1 ? kr.dof(idx) : 1.0;
+                KRcov = kr.vcov;
             }
             
             KRcov = applyCVCorrection(KRcov, cv);
@@ -2404,15 +2595,9 @@ VerificationBundle getVerificationBundle(int estimator_type, double cv = 0.0) {
                 vb.estimator_name = "mixed_model_ttest";
             } else if (est == Estimator::Satterthwaite) {
                 double dofkr;
-                if (correlation_structure != "exchangeable" && 
-                    correlation_structure != "nested_exchangeable") {
-                    auto res = model->matrix.template 
-                        small_sample_correction<glmmr::SE::KRBoth, glmmr::IM::EIM>();
-                    dofkr = res.dof(idx) > 1 ? res.dof(idx) : 1.0;
-                } else {
-                    auto res = model->matrix.template 
-                        small_sample_correction<glmmr::SE::KR, glmmr::IM::EIM>();
-                    dofkr = res.dof(idx) > 1 ? res.dof(idx) : 1.0;
+                {
+                    KRResult kr = kenwardRoger();
+                    dofkr = kr.dof(idx) > 1 ? kr.dof(idx) : 1.0;
                 }
                 vb.dof = dofkr;
                 boost::math::students_t dist(dofkr);
@@ -2423,17 +2608,10 @@ VerificationBundle getVerificationBundle(int estimator_type, double cv = 0.0) {
             } else if (est == Estimator::KenwardRoger) {
                 Eigen::MatrixXd KRcov;
                 double dofkr;
-                if (correlation_structure != "exchangeable" && 
-                    correlation_structure != "nested_exchangeable") {
-                    auto res = model->matrix.template 
-                        small_sample_correction<glmmr::SE::KRBoth, glmmr::IM::EIM>();
-                    dofkr = res.dof(idx) > 1 ? res.dof(idx) : 1.0;
-                    KRcov = res.vcov_beta;
-                } else {
-                    auto res = model->matrix.template 
-                        small_sample_correction<glmmr::SE::KR, glmmr::IM::EIM>();
-                    dofkr = res.dof(idx) > 1 ? res.dof(idx) : 1.0;
-                    KRcov = res.vcov_beta;
+                {
+                    KRResult kr = kenwardRoger();
+                    dofkr = kr.dof(idx) > 1 ? kr.dof(idx) : 1.0;
+                    KRcov = kr.vcov;
                 }
                 KRcov = applyCVCorrection(KRcov, cv);
                 vb.Minv = eigenToExport(KRcov, "kr_adjusted_covariance");

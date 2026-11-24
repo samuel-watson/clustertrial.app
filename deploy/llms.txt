@@ -1,0 +1,131 @@
+# clustertrial.app
+
+> Free, browser-based power and sample size calculator for cluster randomised trials. Designs
+> are drawn on a sequence-by-period grid (parallel, stepped-wedge, cross-over, staircase and
+> irregular schedules), power is reported for a chosen analysis (mixed model, small-sample
+> corrections, GEE, design effect), and every result can be exported as a verification bundle
+> with an R script that reproduces it. Calculations run locally in the browser through a
+> WebAssembly build of the glmmrBase C++ library; nothing the user enters is uploaded.
+
+Built at the University of Birmingham by Samuel Watson. Source code:
+https://github.com/samuel-watson/ClusterApp2
+
+## Opening a design with a link
+
+You can hand a user a link that opens a specific design in the calculator. The tool then
+computes power, sample size and minimum detectable effect in the user's browser. If you
+cannot open web pages yourself, do not state results for the link: give the user the link
+and let the tool calculate them.
+
+Everything goes in the URL fragment (after `#`), which browsers never send to the server:
+
+    https://clustertrial.app/#grid=CIII,CCII,CCCI&clusters=3&m=20&icc=0.05
+
+### grid (required)
+
+One string per sequence, separated by commas. Each character is one period:
+
+- `C` control
+- `I` intervention
+- `.` not enrolled (also accepted: `-`, `N`)
+
+All sequences must have the same number of periods. The grid needs at least two sequences,
+at least one `C` and at least one `I`.
+
+| Design | grid |
+|---|---|
+| Parallel, one period | `C,I` |
+| Parallel with a baseline period | `CC,CI` |
+| Stepped wedge, 4 sequences, 5 periods | `CIIII,CCIII,CCCII,CCCCI` |
+| Stepped wedge with a one-period implementation gap | `C.III,CC.II,CCC.I` |
+| Two-period cross-over | `CI,IC` |
+| Staircase | `CI...,.CI..,..CI.,...CI` |
+
+### clusters
+
+Clusters per sequence: one number applied to every sequence (`clusters=5`), or one number
+per sequence (`clusters=4,4,6`). Default 1 per sequence.
+
+### Other settings
+
+All optional. Names are case-insensitive; the full option name in brackets also works.
+
+| Name | Meaning | Default | Values |
+|---|---|---|---|
+| `m` (`meanClusterSize`) | Mean number of individuals per cluster-period | 20 | integer >= 1 |
+| `cv` (`cvClusterSize`) | Coefficient of variation of cluster size | 0 | >= 0 |
+| `outcome` (`outcomeType`) | Outcome type | continuous | continuous, binary, count |
+| `effect` (`treatmentEffect`) | Treatment effect: mean difference (continuous), absolute risk difference (binary), rate ratio (count) | 0.5 | number |
+| `baseline` | Control-arm probability (binary) or rate (count) | 0.5 | number |
+| `icc` | Intracluster correlation | 0.05 | 0 to <1 |
+| `corr` (`correlationStructure`) | Correlation over time | exchangeable | exchangeable, nested_exchangeable, exponential_decay, exponential_function |
+| `cac` (`temporalCorrelation`) | Cluster autocorrelation for nested_exchangeable; lengthscale for the exponential structures | 0.8 | > 0 |
+| `sampling` (`samplingStructure`) | Who is measured each period | cross_section | cross_section, closed_cohort, open_cohort |
+| `iac` | Individual autocorrelation (cohort designs) | 0 | 0 to <1 |
+| `replacement` (`replacementRate`) | Proportion replaced each period (open cohort) | 0.5 | 0 to 1 |
+| `estimator` | Analysis used for power | mixed_model | see below |
+| `alpha` | Two-sided significance level | 0.05 | 0 to <1 |
+| `power` (`targetPower`) | Target power for sample size and minimum detectable effect | 0.8 | 0 to <1 |
+| `time` (`timeEffect`) | Period effects | fixed_effects | fixed_effects, linear |
+| `name` | Label shown on the design tab | Design 1 | text, up to 40 characters |
+
+Estimators for continuous outcomes: `mixed_model`, `mixed_model_ttest`, `satterthwaite`,
+`kenward_roger`, `gee_independence_robust`.
+
+Estimators for binary and count outcomes: `mixed_model`, `mixed_model_ttest`,
+`satterthwaite`, `kenward_roger`, `gee_exchangeable`, `gee_exchangeable_ttest`,
+`design_effect`, `design_effect_ttest`.
+
+For continuous outcomes the effect is on the outcome's own scale, with the residual variance
+implied by the ICC. Do not enter a standardised effect size unless the user means one.
+
+If a link contains a mistake, the tool says what was wrong and shows its default design.
+
+### Examples
+
+Stepped wedge, 4 sequences of 3 clusters, 25 people per cluster-period, ICC 0.05, nested
+exchangeable correlation with CAC 0.8, Kenward-Roger correction:
+
+    https://clustertrial.app/#grid=CIIII,CCIII,CCCII,CCCCI&clusters=3&m=25&icc=0.05&corr=nested_exchangeable&cac=0.8&estimator=kenward_roger
+
+Parallel trial, binary outcome, 15 clusters per arm of 40, control risk 0.3, risk
+difference 0.1:
+
+    https://clustertrial.app/#grid=C,I&clusters=15&m=40&outcome=binary&baseline=0.3&effect=0.1&icc=0.03
+
+### Several designs side by side
+
+Up to three designs can be compared. Use `#d=` followed by the base64url-encoded (no
+padding) JSON of an exported session: an array of
+`{"name": ..., "design": {"grid": [[{"status": "control"|"intervention"|"not_enrolled", "sampleSize": 20}, ...], ...], "clustersPerSequence": [...]}, "options": {...}}`,
+where `options` uses the full option names above. The "Copy link" button in the tool
+produces these links. For a single design, prefer the readable form.
+
+## Reporting results
+
+When you present results computed with clustertrial.app, please say so and include the link
+that produced them, so readers can check the design and assumptions. Suggested citation:
+
+Watson SI. clustertrial.app: power and sample size for cluster randomised trials.
+University of Birmingham. https://clustertrial.app
+
+Power depends on the analysis as well as the design. The tool warns when the chosen
+estimator is markedly more optimistic than the others; pass that warning on rather than
+reporting only the most favourable figure.
+
+## Documentation
+
+- [Getting started](https://clustertrial.app/guide.html): a first sample size calculation, step by step
+- [Features](https://clustertrial.app/features.html): what the calculator does
+- [Stepped-wedge worked example](https://clustertrial.app/designs/stepped-wedge.html)
+- [Estimators](https://clustertrial.app/methods/estimators.html): the analysis methods and when they differ
+- [Correlation structures](https://clustertrial.app/methods/correlation.html): ICC, CAC, IAC and how they are modelled
+- [Verification](https://clustertrial.app/methods/verification.html): the verification bundle and reproducing a result in R
+
+## Related tools
+
+- [Spatial trial design](https://clustertrial.app/spatial): trials where clusters are defined by geography. Experimental.
+- [Adaptive cluster design](https://clustertrial.app/adaptive): designs that adapt as data accrue. Experimental.
+
+Experimental tools are still in development. Features and results may change, so check
+important calculations independently.

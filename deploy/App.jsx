@@ -201,8 +201,11 @@ class TrialDesign {
   }
 
   static fromJSON(json) {
-  const design = new TrialDesign(json.numSequences, json.numPeriods);
-  
+  // Size the labels and cluster counts from the grid itself, so a session
+  // that omits clustersPerSequence still gets one count per sequence
+  const rows = json.grid.length;
+  const design = new TrialDesign(rows, json.grid[0]?.length || 0);
+
   // Clear and rebuild grid from JSON
   design._grid = json.grid.map(row => 
     row.map(cell => {
@@ -218,8 +221,14 @@ class TrialDesign {
   );
   
   // Restore clusters per sequence
-  if (json.clustersPerSequence) {
+  if (Array.isArray(json.clustersPerSequence) && json.clustersPerSequence.length === rows) {
     design._clustersPerSequence = [...json.clustersPerSequence];
+  }
+  if (Array.isArray(json.sequenceLabels) && json.sequenceLabels.length === rows) {
+    design._sequenceLabels = [...json.sequenceLabels];
+  }
+  if (Array.isArray(json.periodLabels) && json.periodLabels.length === design.numPeriods) {
+    design._periodLabels = [...json.periodLabels];
   }
   
   return design;
@@ -777,9 +786,13 @@ const MathsInterface = {
   },
 
  _getDesignHash(design, options = {}) {
+  // Everything baked into a model when it is built must be in this key, or a
+  // cached model with stale data is reused. Arm matters as well as enrolment:
+  // it sets the treatment column of X.
   const grid = design.getGrid();
-  const structure = grid.map(row => 
-    row.map(cell => cell.status === CellStatus.NOT_ENROLLED ? '0' : '1').join(',')
+  const structure = grid.map(row =>
+    row.map(cell => cell.status === CellStatus.NOT_ENROLLED ? '0'
+      : cell.status === CellStatus.INTERVENTION ? 'I' : 'C').join(',')
   ).join('|');
   const clusters = design._clustersPerSequence.join(',');
   const totalClusters = design._clustersPerSequence.reduce((a, b) => a + b, 0);
@@ -795,7 +808,10 @@ const MathsInterface = {
     ? grid.map(row => row.map(cell => cell.sampleSize ?? '').join(',')).join('|')
     : '';
 
-  const hash = `${design.numSequences}-${design.numPeriods}-${structure}-${clusters}-${totalClusters}-${corrStructure}-${samplingStructure}-${outcomeType}-${sampleSizeMode}-${meanClusterSize}-${cellSizes}`;
+  // Options that change the formula (see _buildFormula)
+  const formulaOptions = `${options.timeEffect ?? 'fixed_effects'}-${!!options.heterogeneousTe}-${!!options.twoTreatments}`;
+
+  const hash = `${design.numSequences}-${design.numPeriods}-${structure}-${clusters}-${totalClusters}-${corrStructure}-${samplingStructure}-${outcomeType}-${sampleSizeMode}-${meanClusterSize}-${cellSizes}-${formulaOptions}`;
   
   console.log('_getDesignHash:', hash);
   return hash;
@@ -2142,6 +2158,276 @@ const createDesignEntry = (name, preset = "parallel") => {
   };
 };
 
+// === DESIGN LINKS ===
+// Designs can be opened from the URL fragment, so a link written by a person,
+// a script or an LLM loads straight into the tool. Browsers never send the
+// fragment to the server, so the design stays on the user's machine.
+//
+//   #grid=CIII,CCII,CCCI&clusters=3&m=20&icc=0.05   readable, one design
+//   #d=<base64url of session JSON>                   any session, as exported
+//
+// The readable form is documented for LLMs in /llms.txt; keep the two in step.
+
+const MAX_LINK_DESIGNS = 3;
+const MAX_LINK_GRID = 100;
+
+const LINK_CELL_CODES = {
+  C: CellStatus.CONTROL,
+  I: CellStatus.INTERVENTION,
+  ".": CellStatus.NOT_ENROLLED,
+  "-": CellStatus.NOT_ENROLLED,
+  N: CellStatus.NOT_ENROLLED,
+};
+const LINK_STATUS_CHAR = {
+  [CellStatus.CONTROL]: "C",
+  [CellStatus.INTERVENTION]: "I",
+  [CellStatus.NOT_ENROLLED]: ".",
+};
+
+// Short names used in links, keyed by option name. Full option names are
+// accepted too.
+const LINK_SHORT_NAMES = {
+  meanClusterSize: "m",
+  outcomeType: "outcome",
+  treatmentEffect: "effect",
+  cvClusterSize: "cv",
+  temporalCorrelation: "cac",
+  correlationStructure: "corr",
+  samplingStructure: "sampling",
+  replacementRate: "replacement",
+  targetPower: "power",
+  timeEffect: "time",
+  sampleSizeMode: "mode",
+};
+const LINK_EXTRA_ALIASES = { size: "meanClusterSize", lengthscale: "temporalCorrelation" };
+
+const LINK_ENUMS = {
+  outcomeType: ["continuous", "binary", "count"],
+  correlationStructure: ["exchangeable", "nested_exchangeable", "exponential_decay", "exponential_function"],
+  samplingStructure: ["cross_section", "closed_cohort", "open_cohort"],
+  individualCovariance: ["exchangeable"],
+  timeEffect: ["fixed_effects", "linear"],
+  sampleSizeMode: ["fixed", "exact"],
+};
+const LINK_PROPORTIONS = ["icc", "iac", "alpha", "targetPower"];
+
+// Options a link may set, with their default values (sampleSizeMode has no
+// default in createDefaultOptions; absent means "fixed")
+const linkableDefaults = () => ({ ...createDefaultOptions(), sampleSizeMode: "fixed" });
+
+// Lower-cased link key -> option name
+const linkKeyLookup = () => {
+  const lookup = {};
+  Object.keys(linkableDefaults()).forEach((k) => (lookup[k.toLowerCase()] = k));
+  Object.entries(LINK_SHORT_NAMES).forEach(([k, short]) => (lookup[short] = k));
+  Object.entries(LINK_EXTRA_ALIASES).forEach(([alias, k]) => (lookup[alias] = k));
+  return lookup;
+};
+
+const toBase64Url = (text) => {
+  let bin = "";
+  new TextEncoder().encode(text).forEach((b) => (bin += String.fromCharCode(b)));
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+};
+
+const fromBase64Url = (encoded) => {
+  let b64 = encoded.replace(/-/g, "+").replace(/_/g, "/");
+  while (b64.length % 4) b64 += "=";
+  return new TextDecoder().decode(Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)));
+};
+
+const parseLinkOptions = (params) => {
+  const defaults = linkableDefaults();
+  const lookup = linkKeyLookup();
+  const out = {};
+
+  for (const [rawKey, rawValue] of params) {
+    const lowerKey = rawKey.trim().toLowerCase();
+    if (["grid", "clusters", "name"].includes(lowerKey)) continue;
+    const key = lookup[lowerKey];
+    if (!key) throw new Error(`Unknown setting "${rawKey}".`);
+
+    const value = rawValue.trim();
+    const def = defaults[key];
+    if (typeof def === "number") {
+      const n = value === "" ? NaN : Number(value);
+      if (!Number.isFinite(n)) throw new Error(`"${rawKey}" must be a number, not "${rawValue}".`);
+      out[key] = n;
+    } else if (typeof def === "boolean") {
+      if (/^(true|1|yes)$/i.test(value)) out[key] = true;
+      else if (/^(false|0|no)$/i.test(value)) out[key] = false;
+      else throw new Error(`"${rawKey}" must be true or false, not "${rawValue}".`);
+    } else {
+      out[key] = value;
+    }
+  }
+
+  for (const [key, allowed] of Object.entries(LINK_ENUMS)) {
+    if (out[key] !== undefined && !allowed.includes(out[key])) {
+      throw new Error(`"${out[key]}" is not a valid ${key}. Use one of: ${allowed.join(", ")}.`);
+    }
+  }
+  for (const key of LINK_PROPORTIONS) {
+    if (out[key] !== undefined && !(out[key] >= 0 && out[key] < 1)) {
+      throw new Error(`${key} must be at least 0 and less than 1.`);
+    }
+  }
+  if (out.replacementRate !== undefined && !(out.replacementRate >= 0 && out.replacementRate <= 1)) {
+    throw new Error("replacementRate must be between 0 and 1.");
+  }
+  if (out.meanClusterSize !== undefined) {
+    if (!(out.meanClusterSize >= 1)) throw new Error("The cluster-period size (m) must be at least 1.");
+    out.meanClusterSize = Math.floor(out.meanClusterSize);
+  }
+  if (out.cvClusterSize !== undefined && out.cvClusterSize < 0) {
+    throw new Error("The coefficient of variation of cluster size (cv) cannot be negative.");
+  }
+  if (out.temporalCorrelation !== undefined) {
+    if (!(out.temporalCorrelation > 0)) throw new Error("cac must be greater than 0.");
+    out.cac = out.temporalCorrelation;
+  }
+  return out;
+};
+
+const parseLinkGrid = (gridText) => {
+  const rows = gridText.split(/[,;|/\s]+/).filter(Boolean);
+  if (rows.length < 2) throw new Error("The grid needs at least two sequences, separated by commas.");
+  const numPeriods = rows[0].length;
+  if (rows.length > MAX_LINK_GRID || numPeriods > MAX_LINK_GRID) {
+    throw new Error(`The grid can have at most ${MAX_LINK_GRID} sequences and ${MAX_LINK_GRID} periods.`);
+  }
+  if (rows.some((r) => r.length !== numPeriods)) {
+    throw new Error("Every sequence in the grid must have the same number of periods.");
+  }
+  const statuses = rows.map((row, i) =>
+    Array.from(row.toUpperCase(), (ch) => {
+      const status = LINK_CELL_CODES[ch];
+      if (!status) {
+        throw new Error(`Sequence ${i + 1} contains "${ch}". Use C (control), I (intervention) or . (not enrolled).`);
+      }
+      return status;
+    })
+  );
+  const flat = statuses.flat();
+  if (!flat.includes(CellStatus.CONTROL) || !flat.includes(CellStatus.INTERVENTION)) {
+    throw new Error("The grid needs at least one control (C) and one intervention (I) cell.");
+  }
+  return statuses;
+};
+
+const parseLinkClusters = (text, numSequences) => {
+  const counts = text.split(/[,;|/\s]+/).filter(Boolean).map(Number);
+  if (counts.length === 0 || counts.some((c) => !Number.isInteger(c) || c < 1)) {
+    throw new Error("clusters must be whole numbers of at least 1.");
+  }
+  if (counts.length === 1) return Array(numSequences).fill(counts[0]);
+  if (counts.length !== numSequences) {
+    throw new Error(`clusters lists ${counts.length} counts but the grid has ${numSequences} sequences.`);
+  }
+  return counts;
+};
+
+const checkEstimator = (options) => {
+  const valid = getEstimators(options.outcomeType).map((e) => e.key);
+  if (!valid.includes(options.estimator)) {
+    throw new Error(
+      `The ${options.estimator} estimator is not available for ${options.outcomeType} outcomes. Use one of: ${valid.join(", ")}.`
+    );
+  }
+};
+
+const entryFromReadableLink = (params) => {
+  const statuses = parseLinkGrid(params.get("grid"));
+  const design = new TrialDesign(statuses.length, statuses[0].length);
+  statuses.forEach((row, i) => row.forEach((status, j) => design.setCellStatus(i, j, status)));
+  if (params.has("clusters")) {
+    design._clustersPerSequence = parseLinkClusters(params.get("clusters"), statuses.length);
+  }
+
+  const options = { ...createDefaultOptions(), ...parseLinkOptions(params) };
+  checkEstimator(options);
+  MathsInterface.calculateSampleSize(design, options.meanClusterSize);
+
+  const name = (params.get("name") || "").trim().slice(0, 40) || "Design 1";
+  return { name, design, options };
+};
+
+// Turns parsed session JSON (an exported file, or the payload of a #d= link)
+// into design entries. Accepts a single design object as well as an array.
+const entriesFromSession = (data) => {
+  const items = Array.isArray(data) ? data : [data];
+  if (items.length === 0) throw new Error("The session contains no designs.");
+  if (items.length > MAX_LINK_DESIGNS) throw new Error(`A session can hold at most ${MAX_LINK_DESIGNS} designs.`);
+
+  const validStatuses = Object.values(CellStatus);
+  return items.map((item, idx) => {
+    const grid = item?.design?.grid;
+    const ok =
+      Array.isArray(grid) &&
+      grid.length > 0 &&
+      grid.every((row) => Array.isArray(row) && row.length === grid[0].length && row.length > 0) &&
+      grid.every((row) => row.every((cell) => validStatuses.includes(cell?.status)));
+    if (!ok) throw new Error(`Design ${idx + 1} does not have a valid grid.`);
+    return {
+      name: item.name || `Design ${idx + 1}`,
+      design: TrialDesign.fromJSON(item.design),
+      options: { ...createDefaultOptions(), ...item.options },
+    };
+  });
+};
+
+// Reads the URL fragment. Returns null when it holds no design, otherwise
+// { entries } or { error }.
+const readDesignLink = (hash) => {
+  const raw = (hash || "").replace(/^#/, "");
+  if (!raw) return null;
+  const params = new URLSearchParams(raw);
+  try {
+    if (params.has("d")) {
+      return { entries: entriesFromSession(JSON.parse(fromBase64Url(params.get("d")))) };
+    }
+    if (params.has("grid")) return { entries: [entryFromReadableLink(params)] };
+    return null;
+  } catch (err) {
+    return { error: err instanceof SyntaxError || err?.name === "InvalidCharacterError"
+      ? "The design data in the link is damaged or incomplete."
+      : err.message };
+  }
+};
+
+// The readable fragment for one design, or null when it can't express the
+// design (cell sizes that differ from the mean size).
+const readableLinkFor = (entry) => {
+  const { design, options } = entry;
+  const m = options.meanClusterSize;
+  const grid = design.getGrid();
+  const representable = grid.every((row) =>
+    row.every((cell) => cell.clusterSize == null && (cell.status === CellStatus.NOT_ENROLLED || cell.sampleSize === m))
+  );
+  if (!representable) return null;
+
+  const parts = [`grid=${grid.map((row) => row.map((c) => LINK_STATUS_CHAR[c.status]).join("")).join(",")}`];
+  const counts = design._clustersPerSequence;
+  parts.push(`clusters=${counts.every((c) => c === counts[0]) ? counts[0] : counts.join(",")}`);
+
+  const defaults = linkableDefaults();
+  Object.keys(defaults).forEach((key) => {
+    const value = options[key] ?? defaults[key];
+    if (key === "cac" || value === defaults[key]) return;
+    parts.push(`${LINK_SHORT_NAMES[key] || key}=${encodeURIComponent(value)}`);
+  });
+  if (entry.name && entry.name !== "Design 1") parts.push(`name=${encodeURIComponent(entry.name)}`);
+  return parts.join("&");
+};
+
+const buildDesignLink = (entries) => {
+  const base = window.location.origin + window.location.pathname;
+  const readable = entries.length === 1 ? readableLinkFor(entries[0]) : null;
+  if (readable) return `${base}#${readable}`;
+  const data = entries.map((d) => ({ name: d.name, design: d.design.toJSON(), options: d.options }));
+  return `${base}#d=${toBase64Url(JSON.stringify(data))}`;
+};
+
 // === UI COMPONENTS ===
 
 const statusConfig = {
@@ -2215,6 +2501,7 @@ const ICON_PATHS = {
   image: "M2.75 3.25h10.5v9.5H2.75zM2.75 10.5l3-3 2.5 2.5 1.75-1.75 3.25 3.25M10.25 6.25v.1",
   chevron: "M6 3.5 10.5 8 6 12.5",
   minus: "M4 8h8",
+  link: "M6.75 9.25a2.75 2.75 0 0 0 3.9 0l2-2a2.75 2.75 0 0 0-3.9-3.9l-.75.75M9.25 6.75a2.75 2.75 0 0 0-3.9 0l-2 2a2.75 2.75 0 0 0 3.9 3.9l.75-.75",
 };
 
 const Icon = ({ name, className = "w-4 h-4" }) => (
@@ -4254,10 +4541,51 @@ const currentXConfig = useMemo(() => {
 
 
 
+// Estimators offered for each outcome type (also used to validate design links)
+const getEstimators = (outcomeType) => {
+  if (outcomeType === 'binary' || outcomeType === 'count') {
+    return [
+      { key: 'mixed_model', label: 'GLMM (Conditional)' },
+      { key: 'mixed_model_ttest', label: 'GLMM (Conditional), t-test' },
+      { key: 'satterthwaite', label: 'GLMM (Conditional), Satterthwaite' },
+      { key: 'kenward_roger', label: 'GLMM (Conditional), Kenward-Roger' },
+      { key: 'gee_exchangeable', label: 'GEE (Marginal; Robust)' },
+      { key: 'gee_exchangeable_ttest', label: 'GEE (Marginal; Robust), t-test' },
+      { key: 'design_effect', label: 'Design effect'},
+      { key: 'design_effect_ttest', label: 'Design effect, t-test'}
+    ];
+  }
+  // Gaussian - no GEE exchangeable distinction needed
+  return [
+    { key: 'mixed_model', label: 'Model-based' },
+    { key: 'mixed_model_ttest', label: 'Model-based, t-test' },
+    { key: 'satterthwaite', label: 'Satterthwaite' },
+    { key: 'kenward_roger', label: 'Kenward-Roger' },
+    { key: 'gee_independence_robust', label: 'GEE Independence Robust' },
+  ];
+};
+
 // === MAIN COMPONENT ===
 
+const linkNoticeFor = (link) =>
+  link.error
+    ? { kind: "error", text: `This link's design couldn't be opened. ${link.error}` }
+    : {
+        kind: "ok",
+        text: `Opened ${link.entries.length === 1 ? "the design" : `${link.entries.length} designs`} from the link. Results are calculated in your browser.`,
+      };
+
 function App() {
-  const [designs, setDesigns] = useState(() => [createDesignEntry("Design 1")]);
+  // A design in the URL fragment replaces the default design
+  const [initialLink] = useState(() => readDesignLink(window.location.hash));
+  const [designs, setDesigns] = useState(
+    () => initialLink?.entries || [createDesignEntry("Design 1")]
+  );
+  const [linkNotice, setLinkNotice] = useState(() => (initialLink ? linkNoticeFor(initialLink) : null));
+  const [linkCopied, setLinkCopied] = useState(false);
+  // Calculate once the engine is ready when designs arrive by link, so the
+  // results are on screen without another click
+  const autoCalcRef = useRef(Boolean(initialLink?.entries));
   const [activeIndex, setActiveIndex] = useState(0);
   const [contextMenu, setContextMenu] = useState(null);
   const [cellEditor, setCellEditor] = useState(null);
@@ -4284,29 +4612,6 @@ const [rowWeights, setRowWeights] = useState(null);
   const options = activeDesign.options;
 
   const weights = weightMode !== 'none' ? cachedWeights[activeIndex] || null : null;
-  // List of all estimators for comparison
-const getEstimators = (outcomeType) => {
-  if (outcomeType === 'binary' || outcomeType === 'count') {
-    return [
-      { key: 'mixed_model', label: 'GLMM (Conditional)' },
-      { key: 'mixed_model_ttest', label: 'GLMM (Conditional), t-test' },
-      { key: 'satterthwaite', label: 'GLMM (Conditional), Satterthwaite' },
-      { key: 'kenward_roger', label: 'GLMM (Conditional), Kenward-Roger' },
-      { key: 'gee_exchangeable', label: 'GEE (Marginal; Robust)' },
-      { key: 'gee_exchangeable_ttest', label: 'GEE (Marginal; Robust), t-test' },
-      { key: 'design_effect', label: 'Design effect'},
-      { key: 'design_effect_ttest', label: 'Design effect, t-test'}
-    ];
-  }
-  // Gaussian - no GEE exchangeable distinction needed
-  return [
-    { key: 'mixed_model', label: 'Model-based' },
-    { key: 'mixed_model_ttest', label: 'Model-based, t-test' },
-    { key: 'satterthwaite', label: 'Satterthwaite' },
-    { key: 'kenward_roger', label: 'Kenward-Roger' },
-    { key: 'gee_independence_robust', label: 'GEE Independence Robust' },
-  ];
-};
 
 // Memoized power comparison across estimators
 const powerWarning = useMemo(() => {
@@ -4438,6 +4743,29 @@ return warning;
   setResultsStale(false);
   setIsCalculating(false);
 }, [designs, wasmLoaded]);
+
+  useEffect(() => {
+    if (wasmLoaded && autoCalcRef.current) {
+      autoCalcRef.current = false;
+      recalculateResults();
+    }
+  }, [wasmLoaded, recalculateResults]);
+
+  // A link pasted into an already-open tab only changes the fragment, so
+  // there is no page load; open its design here instead
+  useEffect(() => {
+    const onHashChange = () => {
+      const link = readDesignLink(window.location.hash);
+      if (!link) return;
+      setLinkNotice(linkNoticeFor(link));
+      if (link.error) return;
+      autoCalcRef.current = true;
+      setDesigns(link.entries);
+      setActiveIndex(0);
+    };
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
 
   const updateActiveDesign = useCallback(
     (modifier) => {
@@ -4784,13 +5112,7 @@ const teInfo = getTreatmentEffectInfo(options.outcomeType);
     const reader = new FileReader();
     reader.onload = (event) => {
       try {
-        const importedData = JSON.parse(event.target.result);
-
-        const newDesigns = importedData.map((item, idx) => ({
-          name: item.name || `Design ${idx + 1}`,
-          design: TrialDesign.fromJSON(item.design),
-          options: { ...createDefaultOptions(), ...item.options },
-        }));
+        const newDesigns = entriesFromSession(JSON.parse(event.target.result));
 
         if (newDesigns.length > 0) {
           setDesigns(newDesigns);
@@ -4804,6 +5126,20 @@ const teInfo = getTreatmentEffectInfo(options.outcomeType);
     };
     reader.readAsText(file);
     e.target.value = "";
+  };
+
+  const copyDesignLink = async () => {
+    const url = buildDesignLink(designs);
+    // Put the link in the address bar too, so a reload or bookmark keeps it.
+    // replaceState doesn't fire hashchange, so the designs aren't reloaded.
+    window.history.replaceState(null, "", url);
+    try {
+      await navigator.clipboard.writeText(url);
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 2000);
+    } catch {
+      window.prompt("Copy this link:", url);
+    }
   };
 
   const exportBundle = async () => {
@@ -4863,7 +5199,7 @@ const teInfo = getTreatmentEffectInfo(options.outcomeType);
               Cluster trial design tool
             </h1>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <button
               onClick={() => document.getElementById("import-file").click()}
               className="btn btn-secondary"
@@ -4880,6 +5216,14 @@ const teInfo = getTreatmentEffectInfo(options.outcomeType);
               <Icon name="download" className="w-3.5 h-3.5" />
               Export session
             </button>
+            <button
+              onClick={copyDesignLink}
+              className="btn btn-secondary"
+              title="Copy a link that opens these designs. The design is held in the link itself; nothing is uploaded."
+            >
+              <Icon name={linkCopied ? "check" : "link"} className="w-3.5 h-3.5" />
+              <span aria-live="polite">{linkCopied ? "Link copied" : "Copy link"}</span>
+            </button>
             <input
               id="import-file"
               type="file"
@@ -4889,6 +5233,30 @@ const teInfo = getTreatmentEffectInfo(options.outcomeType);
             />
           </div>
         </header>
+
+        {linkNotice && (
+          <div
+            role={linkNotice.kind === "error" ? "alert" : "status"}
+            className={`mt-4 flex items-start gap-2.5 border rounded-lg px-4 py-3 text-sm ${
+              linkNotice.kind === "error"
+                ? "bg-red-50 border-red-200 text-red-900"
+                : "bg-ink-50 border-ink-200 text-ink-800"
+            }`}
+          >
+            <Icon
+              name={linkNotice.kind === "error" ? "alert" : "link"}
+              className={`w-4 h-4 mt-0.5 ${linkNotice.kind === "error" ? "text-red-600" : "text-ink-500"}`}
+            />
+            <p className="flex-1">{linkNotice.text}</p>
+            <button
+              onClick={() => setLinkNotice(null)}
+              className="w-5 h-5 flex items-center justify-center rounded text-ink-400 hover:text-ink-700 hover:bg-ink-100"
+              aria-label="Dismiss"
+            >
+              <Icon name="close" className="w-3 h-3" />
+            </button>
+          </div>
+        )}
 
         {/* Design tabs */}
         <div

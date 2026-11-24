@@ -145,7 +145,9 @@ class TrialDesign {
     return this._grid;
   }
   static fromJSON(json) {
-    const design2 = new TrialDesign(json.numSequences, json.numPeriods);
+    var _a;
+    const rows = json.grid.length;
+    const design2 = new TrialDesign(rows, ((_a = json.grid[0]) == null ? void 0 : _a.length) || 0);
     design2._grid = json.grid.map(
       (row) => row.map((cell) => {
         const newCell = new DesignCell(cell.status);
@@ -158,8 +160,14 @@ class TrialDesign {
         return newCell;
       })
     );
-    if (json.clustersPerSequence) {
+    if (Array.isArray(json.clustersPerSequence) && json.clustersPerSequence.length === rows) {
       design2._clustersPerSequence = [...json.clustersPerSequence];
+    }
+    if (Array.isArray(json.sequenceLabels) && json.sequenceLabels.length === rows) {
+      design2._sequenceLabels = [...json.sequenceLabels];
+    }
+    if (Array.isArray(json.periodLabels) && json.periodLabels.length === design2.numPeriods) {
+      design2._periodLabels = [...json.periodLabels];
     }
     return design2;
   }
@@ -637,10 +645,10 @@ const MathsInterface = {
     return wasmReady;
   },
   _getDesignHash(design2, options2 = {}) {
-    var _a, _b, _c, _d, _e;
+    var _a, _b, _c, _d, _e, _f;
     const grid = design2.getGrid();
     const structure = grid.map(
-      (row) => row.map((cell) => cell.status === CellStatus.NOT_ENROLLED ? "0" : "1").join(",")
+      (row) => row.map((cell) => cell.status === CellStatus.NOT_ENROLLED ? "0" : cell.status === CellStatus.INTERVENTION ? "I" : "C").join(",")
     ).join("|");
     const clusters = design2._clustersPerSequence.join(",");
     const totalClusters = design2._clustersPerSequence.reduce((a, b) => a + b, 0);
@@ -653,7 +661,8 @@ const MathsInterface = {
       var _a2;
       return (_a2 = cell.sampleSize) != null ? _a2 : "";
     }).join(",")).join("|") : "";
-    const hash = `${design2.numSequences}-${design2.numPeriods}-${structure}-${clusters}-${totalClusters}-${corrStructure}-${samplingStructure}-${outcomeType}-${sampleSizeMode}-${meanClusterSize}-${cellSizes}`;
+    const formulaOptions = `${(_f = options2.timeEffect) != null ? _f : "fixed_effects"}-${!!options2.heterogeneousTe}-${!!options2.twoTreatments}`;
+    const hash = `${design2.numSequences}-${design2.numPeriods}-${structure}-${clusters}-${totalClusters}-${corrStructure}-${samplingStructure}-${outcomeType}-${sampleSizeMode}-${meanClusterSize}-${cellSizes}-${formulaOptions}`;
     console.log("_getDesignHash:", hash);
     return hash;
   },
@@ -1854,6 +1863,226 @@ const createDesignEntry = (name, preset = "parallel") => {
     options: createDefaultOptions()
   };
 };
+const MAX_LINK_DESIGNS = 3;
+const MAX_LINK_GRID = 100;
+const LINK_CELL_CODES = {
+  C: CellStatus.CONTROL,
+  I: CellStatus.INTERVENTION,
+  ".": CellStatus.NOT_ENROLLED,
+  "-": CellStatus.NOT_ENROLLED,
+  N: CellStatus.NOT_ENROLLED
+};
+const LINK_STATUS_CHAR = {
+  [CellStatus.CONTROL]: "C",
+  [CellStatus.INTERVENTION]: "I",
+  [CellStatus.NOT_ENROLLED]: "."
+};
+const LINK_SHORT_NAMES = {
+  meanClusterSize: "m",
+  outcomeType: "outcome",
+  treatmentEffect: "effect",
+  cvClusterSize: "cv",
+  temporalCorrelation: "cac",
+  correlationStructure: "corr",
+  samplingStructure: "sampling",
+  replacementRate: "replacement",
+  targetPower: "power",
+  timeEffect: "time",
+  sampleSizeMode: "mode"
+};
+const LINK_EXTRA_ALIASES = { size: "meanClusterSize", lengthscale: "temporalCorrelation" };
+const LINK_ENUMS = {
+  outcomeType: ["continuous", "binary", "count"],
+  correlationStructure: ["exchangeable", "nested_exchangeable", "exponential_decay", "exponential_function"],
+  samplingStructure: ["cross_section", "closed_cohort", "open_cohort"],
+  individualCovariance: ["exchangeable"],
+  timeEffect: ["fixed_effects", "linear"],
+  sampleSizeMode: ["fixed", "exact"]
+};
+const LINK_PROPORTIONS = ["icc", "iac", "alpha", "targetPower"];
+const linkableDefaults = () => ({ ...createDefaultOptions(), sampleSizeMode: "fixed" });
+const linkKeyLookup = () => {
+  const lookup = {};
+  Object.keys(linkableDefaults()).forEach((k) => lookup[k.toLowerCase()] = k);
+  Object.entries(LINK_SHORT_NAMES).forEach(([k, short]) => lookup[short] = k);
+  Object.entries(LINK_EXTRA_ALIASES).forEach(([alias, k]) => lookup[alias] = k);
+  return lookup;
+};
+const toBase64Url = (text) => {
+  let bin = "";
+  new TextEncoder().encode(text).forEach((b) => bin += String.fromCharCode(b));
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+};
+const fromBase64Url = (encoded) => {
+  let b64 = encoded.replace(/-/g, "+").replace(/_/g, "/");
+  while (b64.length % 4) b64 += "=";
+  return new TextDecoder().decode(Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)));
+};
+const parseLinkOptions = (params) => {
+  const defaults = linkableDefaults();
+  const lookup = linkKeyLookup();
+  const out = {};
+  for (const [rawKey, rawValue] of params) {
+    const lowerKey = rawKey.trim().toLowerCase();
+    if (["grid", "clusters", "name"].includes(lowerKey)) continue;
+    const key = lookup[lowerKey];
+    if (!key) throw new Error(`Unknown setting "${rawKey}".`);
+    const value = rawValue.trim();
+    const def = defaults[key];
+    if (typeof def === "number") {
+      const n = value === "" ? NaN : Number(value);
+      if (!Number.isFinite(n)) throw new Error(`"${rawKey}" must be a number, not "${rawValue}".`);
+      out[key] = n;
+    } else if (typeof def === "boolean") {
+      if (/^(true|1|yes)$/i.test(value)) out[key] = true;
+      else if (/^(false|0|no)$/i.test(value)) out[key] = false;
+      else throw new Error(`"${rawKey}" must be true or false, not "${rawValue}".`);
+    } else {
+      out[key] = value;
+    }
+  }
+  for (const [key, allowed] of Object.entries(LINK_ENUMS)) {
+    if (out[key] !== void 0 && !allowed.includes(out[key])) {
+      throw new Error(`"${out[key]}" is not a valid ${key}. Use one of: ${allowed.join(", ")}.`);
+    }
+  }
+  for (const key of LINK_PROPORTIONS) {
+    if (out[key] !== void 0 && !(out[key] >= 0 && out[key] < 1)) {
+      throw new Error(`${key} must be at least 0 and less than 1.`);
+    }
+  }
+  if (out.replacementRate !== void 0 && !(out.replacementRate >= 0 && out.replacementRate <= 1)) {
+    throw new Error("replacementRate must be between 0 and 1.");
+  }
+  if (out.meanClusterSize !== void 0) {
+    if (!(out.meanClusterSize >= 1)) throw new Error("The cluster-period size (m) must be at least 1.");
+    out.meanClusterSize = Math.floor(out.meanClusterSize);
+  }
+  if (out.cvClusterSize !== void 0 && out.cvClusterSize < 0) {
+    throw new Error("The coefficient of variation of cluster size (cv) cannot be negative.");
+  }
+  if (out.temporalCorrelation !== void 0) {
+    if (!(out.temporalCorrelation > 0)) throw new Error("cac must be greater than 0.");
+    out.cac = out.temporalCorrelation;
+  }
+  return out;
+};
+const parseLinkGrid = (gridText) => {
+  const rows = gridText.split(/[,;|/\s]+/).filter(Boolean);
+  if (rows.length < 2) throw new Error("The grid needs at least two sequences, separated by commas.");
+  const numPeriods = rows[0].length;
+  if (rows.length > MAX_LINK_GRID || numPeriods > MAX_LINK_GRID) {
+    throw new Error(`The grid can have at most ${MAX_LINK_GRID} sequences and ${MAX_LINK_GRID} periods.`);
+  }
+  if (rows.some((r) => r.length !== numPeriods)) {
+    throw new Error("Every sequence in the grid must have the same number of periods.");
+  }
+  const statuses = rows.map(
+    (row, i) => Array.from(row.toUpperCase(), (ch) => {
+      const status = LINK_CELL_CODES[ch];
+      if (!status) {
+        throw new Error(`Sequence ${i + 1} contains "${ch}". Use C (control), I (intervention) or . (not enrolled).`);
+      }
+      return status;
+    })
+  );
+  const flat = statuses.flat();
+  if (!flat.includes(CellStatus.CONTROL) || !flat.includes(CellStatus.INTERVENTION)) {
+    throw new Error("The grid needs at least one control (C) and one intervention (I) cell.");
+  }
+  return statuses;
+};
+const parseLinkClusters = (text, numSequences) => {
+  const counts = text.split(/[,;|/\s]+/).filter(Boolean).map(Number);
+  if (counts.length === 0 || counts.some((c) => !Number.isInteger(c) || c < 1)) {
+    throw new Error("clusters must be whole numbers of at least 1.");
+  }
+  if (counts.length === 1) return Array(numSequences).fill(counts[0]);
+  if (counts.length !== numSequences) {
+    throw new Error(`clusters lists ${counts.length} counts but the grid has ${numSequences} sequences.`);
+  }
+  return counts;
+};
+const checkEstimator = (options2) => {
+  const valid = getEstimators(options2.outcomeType).map((e) => e.key);
+  if (!valid.includes(options2.estimator)) {
+    throw new Error(
+      `The ${options2.estimator} estimator is not available for ${options2.outcomeType} outcomes. Use one of: ${valid.join(", ")}.`
+    );
+  }
+};
+const entryFromReadableLink = (params) => {
+  const statuses = parseLinkGrid(params.get("grid"));
+  const design2 = new TrialDesign(statuses.length, statuses[0].length);
+  statuses.forEach((row, i) => row.forEach((status, j) => design2.setCellStatus(i, j, status)));
+  if (params.has("clusters")) {
+    design2._clustersPerSequence = parseLinkClusters(params.get("clusters"), statuses.length);
+  }
+  const options2 = { ...createDefaultOptions(), ...parseLinkOptions(params) };
+  checkEstimator(options2);
+  MathsInterface.calculateSampleSize(design2, options2.meanClusterSize);
+  const name = (params.get("name") || "").trim().slice(0, 40) || "Design 1";
+  return { name, design: design2, options: options2 };
+};
+const entriesFromSession = (data) => {
+  const items = Array.isArray(data) ? data : [data];
+  if (items.length === 0) throw new Error("The session contains no designs.");
+  if (items.length > MAX_LINK_DESIGNS) throw new Error(`A session can hold at most ${MAX_LINK_DESIGNS} designs.`);
+  const validStatuses = Object.values(CellStatus);
+  return items.map((item, idx) => {
+    var _a;
+    const grid = (_a = item == null ? void 0 : item.design) == null ? void 0 : _a.grid;
+    const ok = Array.isArray(grid) && grid.length > 0 && grid.every((row) => Array.isArray(row) && row.length === grid[0].length && row.length > 0) && grid.every((row) => row.every((cell) => validStatuses.includes(cell == null ? void 0 : cell.status)));
+    if (!ok) throw new Error(`Design ${idx + 1} does not have a valid grid.`);
+    return {
+      name: item.name || `Design ${idx + 1}`,
+      design: TrialDesign.fromJSON(item.design),
+      options: { ...createDefaultOptions(), ...item.options }
+    };
+  });
+};
+const readDesignLink = (hash) => {
+  const raw = (hash || "").replace(/^#/, "");
+  if (!raw) return null;
+  const params = new URLSearchParams(raw);
+  try {
+    if (params.has("d")) {
+      return { entries: entriesFromSession(JSON.parse(fromBase64Url(params.get("d")))) };
+    }
+    if (params.has("grid")) return { entries: [entryFromReadableLink(params)] };
+    return null;
+  } catch (err) {
+    return { error: err instanceof SyntaxError || (err == null ? void 0 : err.name) === "InvalidCharacterError" ? "The design data in the link is damaged or incomplete." : err.message };
+  }
+};
+const readableLinkFor = (entry) => {
+  const { design: design2, options: options2 } = entry;
+  const m = options2.meanClusterSize;
+  const grid = design2.getGrid();
+  const representable = grid.every(
+    (row) => row.every((cell) => cell.clusterSize == null && (cell.status === CellStatus.NOT_ENROLLED || cell.sampleSize === m))
+  );
+  if (!representable) return null;
+  const parts = [`grid=${grid.map((row) => row.map((c) => LINK_STATUS_CHAR[c.status]).join("")).join(",")}`];
+  const counts = design2._clustersPerSequence;
+  parts.push(`clusters=${counts.every((c) => c === counts[0]) ? counts[0] : counts.join(",")}`);
+  const defaults = linkableDefaults();
+  Object.keys(defaults).forEach((key) => {
+    var _a;
+    const value = (_a = options2[key]) != null ? _a : defaults[key];
+    if (key === "cac" || value === defaults[key]) return;
+    parts.push(`${LINK_SHORT_NAMES[key] || key}=${encodeURIComponent(value)}`);
+  });
+  if (entry.name && entry.name !== "Design 1") parts.push(`name=${encodeURIComponent(entry.name)}`);
+  return parts.join("&");
+};
+const buildDesignLink = (entries) => {
+  const base = window.location.origin + window.location.pathname;
+  const readable = entries.length === 1 ? readableLinkFor(entries[0]) : null;
+  if (readable) return `${base}#${readable}`;
+  const data = entries.map((d) => ({ name: d.name, design: d.design.toJSON(), options: d.options }));
+  return `${base}#d=${toBase64Url(JSON.stringify(data))}`;
+};
 const statusConfig = {
   [CellStatus.CONTROL]: {
     label: "Control",
@@ -1920,7 +2149,8 @@ const ICON_PATHS = {
   bundle: "M2.75 5 8 2.25 13.25 5v6L8 13.75 2.75 11V5ZM2.75 5 8 7.75 13.25 5M8 7.75v6",
   image: "M2.75 3.25h10.5v9.5H2.75zM2.75 10.5l3-3 2.5 2.5 1.75-1.75 3.25 3.25M10.25 6.25v.1",
   chevron: "M6 3.5 10.5 8 6 12.5",
-  minus: "M4 8h8"
+  minus: "M4 8h8",
+  link: "M6.75 9.25a2.75 2.75 0 0 0 3.9 0l2-2a2.75 2.75 0 0 0-3.9-3.9l-.75.75M9.25 6.75a2.75 2.75 0 0 0-3.9 0l-2 2a2.75 2.75 0 0 0 3.9 3.9l.75-.75"
 };
 const Icon = ({ name, className = "w-4 h-4" }) => /* @__PURE__ */ React.createElement(
   "svg",
@@ -3143,9 +3373,40 @@ const PlotArea = ({
     }
   )), /* @__PURE__ */ React.createElement("span", { className: "text-xs text-ink-500 pb-1.5" }, "Showing ", designs[activeIndex].name))), /* @__PURE__ */ React.createElement("div", { className: "relative flex-1 min-h-[280px] mx-2 mb-2 mt-1" }, isStale && /* @__PURE__ */ React.createElement("div", { className: "absolute inset-0 flex items-center justify-center z-10 pointer-events-none" }, /* @__PURE__ */ React.createElement("span", { className: "bg-white border border-amber-200 text-amber-800 text-xs font-medium px-2.5 py-1 rounded-md shadow-card" }, "Out of date")), /* @__PURE__ */ React.createElement("div", { className: `absolute inset-0 transition-opacity ${isStale ? "opacity-40" : ""}` }, !plotlyLoaded ? /* @__PURE__ */ React.createElement("div", { className: "h-full flex items-center justify-center text-sm text-ink-500" }, "Loading plot library\u2026") : /* @__PURE__ */ React.createElement("div", { ref: plotRef, className: "w-full h-full" }))));
 };
+const getEstimators = (outcomeType) => {
+  if (outcomeType === "binary" || outcomeType === "count") {
+    return [
+      { key: "mixed_model", label: "GLMM (Conditional)" },
+      { key: "mixed_model_ttest", label: "GLMM (Conditional), t-test" },
+      { key: "satterthwaite", label: "GLMM (Conditional), Satterthwaite" },
+      { key: "kenward_roger", label: "GLMM (Conditional), Kenward-Roger" },
+      { key: "gee_exchangeable", label: "GEE (Marginal; Robust)" },
+      { key: "gee_exchangeable_ttest", label: "GEE (Marginal; Robust), t-test" },
+      { key: "design_effect", label: "Design effect" },
+      { key: "design_effect_ttest", label: "Design effect, t-test" }
+    ];
+  }
+  return [
+    { key: "mixed_model", label: "Model-based" },
+    { key: "mixed_model_ttest", label: "Model-based, t-test" },
+    { key: "satterthwaite", label: "Satterthwaite" },
+    { key: "kenward_roger", label: "Kenward-Roger" },
+    { key: "gee_independence_robust", label: "GEE Independence Robust" }
+  ];
+};
+const linkNoticeFor = (link) => link.error ? { kind: "error", text: `This link's design couldn't be opened. ${link.error}` } : {
+  kind: "ok",
+  text: `Opened ${link.entries.length === 1 ? "the design" : `${link.entries.length} designs`} from the link. Results are calculated in your browser.`
+};
 function App() {
   var _a;
-  const [designs, setDesigns] = useState(() => [createDesignEntry("Design 1")]);
+  const [initialLink] = useState(() => readDesignLink(window.location.hash));
+  const [designs, setDesigns] = useState(
+    () => (initialLink == null ? void 0 : initialLink.entries) || [createDesignEntry("Design 1")]
+  );
+  const [linkNotice, setLinkNotice] = useState(() => initialLink ? linkNoticeFor(initialLink) : null);
+  const [linkCopied, setLinkCopied] = useState(false);
+  const autoCalcRef = useRef(Boolean(initialLink == null ? void 0 : initialLink.entries));
   const [activeIndex, setActiveIndex] = useState(0);
   const [contextMenu, setContextMenu] = useState(null);
   const [cellEditor, setCellEditor] = useState(null);
@@ -3171,27 +3432,6 @@ function App() {
   const design2 = activeDesign.design;
   const options2 = activeDesign.options;
   const weights = weightMode !== "none" ? cachedWeights[activeIndex] || null : null;
-  const getEstimators = (outcomeType) => {
-    if (outcomeType === "binary" || outcomeType === "count") {
-      return [
-        { key: "mixed_model", label: "GLMM (Conditional)" },
-        { key: "mixed_model_ttest", label: "GLMM (Conditional), t-test" },
-        { key: "satterthwaite", label: "GLMM (Conditional), Satterthwaite" },
-        { key: "kenward_roger", label: "GLMM (Conditional), Kenward-Roger" },
-        { key: "gee_exchangeable", label: "GEE (Marginal; Robust)" },
-        { key: "gee_exchangeable_ttest", label: "GEE (Marginal; Robust), t-test" },
-        { key: "design_effect", label: "Design effect" },
-        { key: "design_effect_ttest", label: "Design effect, t-test" }
-      ];
-    }
-    return [
-      { key: "mixed_model", label: "Model-based" },
-      { key: "mixed_model_ttest", label: "Model-based, t-test" },
-      { key: "satterthwaite", label: "Satterthwaite" },
-      { key: "kenward_roger", label: "Kenward-Roger" },
-      { key: "gee_independence_robust", label: "GEE Independence Robust" }
-    ];
-  };
   const powerWarning = useMemo(() => {
     if (!wasmLoaded || resultsStale || isCalculating) return null;
     const currentResult = cachedResults[activeIndex];
@@ -3290,6 +3530,25 @@ function App() {
     setResultsStale(false);
     setIsCalculating(false);
   }, [designs, wasmLoaded]);
+  useEffect(() => {
+    if (wasmLoaded && autoCalcRef.current) {
+      autoCalcRef.current = false;
+      recalculateResults();
+    }
+  }, [wasmLoaded, recalculateResults]);
+  useEffect(() => {
+    const onHashChange = () => {
+      const link = readDesignLink(window.location.hash);
+      if (!link) return;
+      setLinkNotice(linkNoticeFor(link));
+      if (link.error) return;
+      autoCalcRef.current = true;
+      setDesigns(link.entries);
+      setActiveIndex(0);
+    };
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
   const updateActiveDesign = useCallback(
     (modifier) => {
       setDesigns((prev) => {
@@ -3593,12 +3852,7 @@ function App() {
     const reader = new FileReader();
     reader.onload = (event) => {
       try {
-        const importedData = JSON.parse(event.target.result);
-        const newDesigns = importedData.map((item, idx) => ({
-          name: item.name || `Design ${idx + 1}`,
-          design: TrialDesign.fromJSON(item.design),
-          options: { ...createDefaultOptions(), ...item.options }
-        }));
+        const newDesigns = entriesFromSession(JSON.parse(event.target.result));
         if (newDesigns.length > 0) {
           setDesigns(newDesigns);
           setActiveIndex(0);
@@ -3611,6 +3865,17 @@ function App() {
     };
     reader.readAsText(file);
     e.target.value = "";
+  };
+  const copyDesignLink = async () => {
+    const url = buildDesignLink(designs);
+    window.history.replaceState(null, "", url);
+    try {
+      await navigator.clipboard.writeText(url);
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 2e3);
+    } catch (e) {
+      window.prompt("Copy this link:", url);
+    }
   };
   const exportBundle = async () => {
     try {
@@ -3653,7 +3918,7 @@ function App() {
   const clustersPerSeq = grid.map((_, i) => design2.getClusters(i));
   const minClustersPerSeq = Math.min(...clustersPerSeq);
   const maxClustersPerSeq = Math.max(...clustersPerSeq);
-  return /* @__PURE__ */ React.createElement("div", { className: "min-h-screen bg-paper" }, /* @__PURE__ */ React.createElement("div", { className: "max-w-7xl mx-auto px-4 md:px-6 pt-7 pb-12" }, /* @__PURE__ */ React.createElement("header", { className: "flex flex-wrap items-end justify-between gap-x-6 gap-y-3" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("h1", { className: "font-display text-[1.75rem] leading-tight font-semibold tracking-[-0.012em] text-ink-900" }, "Cluster trial design tool")), /* @__PURE__ */ React.createElement("div", { className: "flex gap-2" }, /* @__PURE__ */ React.createElement(
+  return /* @__PURE__ */ React.createElement("div", { className: "min-h-screen bg-paper" }, /* @__PURE__ */ React.createElement("div", { className: "max-w-7xl mx-auto px-4 md:px-6 pt-7 pb-12" }, /* @__PURE__ */ React.createElement("header", { className: "flex flex-wrap items-end justify-between gap-x-6 gap-y-3" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("h1", { className: "font-display text-[1.75rem] leading-tight font-semibold tracking-[-0.012em] text-ink-900" }, "Cluster trial design tool")), /* @__PURE__ */ React.createElement("div", { className: "flex flex-wrap gap-2" }, /* @__PURE__ */ React.createElement(
     "button",
     {
       onClick: () => document.getElementById("import-file").click(),
@@ -3672,6 +3937,15 @@ function App() {
     /* @__PURE__ */ React.createElement(Icon, { name: "download", className: "w-3.5 h-3.5" }),
     "Export session"
   ), /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      onClick: copyDesignLink,
+      className: "btn btn-secondary",
+      title: "Copy a link that opens these designs. The design is held in the link itself; nothing is uploaded."
+    },
+    /* @__PURE__ */ React.createElement(Icon, { name: linkCopied ? "check" : "link", className: "w-3.5 h-3.5" }),
+    /* @__PURE__ */ React.createElement("span", { "aria-live": "polite" }, linkCopied ? "Link copied" : "Copy link")
+  ), /* @__PURE__ */ React.createElement(
     "input",
     {
       id: "import-file",
@@ -3680,7 +3954,30 @@ function App() {
       className: "hidden",
       onChange: importSession
     }
-  ))), /* @__PURE__ */ React.createElement(
+  ))), linkNotice && /* @__PURE__ */ React.createElement(
+    "div",
+    {
+      role: linkNotice.kind === "error" ? "alert" : "status",
+      className: `mt-4 flex items-start gap-2.5 border rounded-lg px-4 py-3 text-sm ${linkNotice.kind === "error" ? "bg-red-50 border-red-200 text-red-900" : "bg-ink-50 border-ink-200 text-ink-800"}`
+    },
+    /* @__PURE__ */ React.createElement(
+      Icon,
+      {
+        name: linkNotice.kind === "error" ? "alert" : "link",
+        className: `w-4 h-4 mt-0.5 ${linkNotice.kind === "error" ? "text-red-600" : "text-ink-500"}`
+      }
+    ),
+    /* @__PURE__ */ React.createElement("p", { className: "flex-1" }, linkNotice.text),
+    /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        onClick: () => setLinkNotice(null),
+        className: "w-5 h-5 flex items-center justify-center rounded text-ink-400 hover:text-ink-700 hover:bg-ink-100",
+        "aria-label": "Dismiss"
+      },
+      /* @__PURE__ */ React.createElement(Icon, { name: "close", className: "w-3 h-3" })
+    )
+  ), /* @__PURE__ */ React.createElement(
     "div",
     {
       className: "mt-6 mb-5 flex flex-wrap items-end gap-1 border-b border-ink-200",
